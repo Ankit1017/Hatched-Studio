@@ -1,0 +1,135 @@
+{
+  "topic": "Agentic System",
+  "columns": [
+    "Subtype",
+    "Attribute A",
+    "Attribute B",
+    "Attribute C",
+    "Attribute D",
+    "Attribute E",
+    "Attribute F",
+    "Attribute G"
+  ],
+  "rows": [
+    {
+      "Subtype": "Rule-based Agentic System",
+      "Attribute A": "Fixed set of rules",
+      "Attribute B": "Limited reasoning capabilities",
+      "Attribute C": "Static knowledge base",
+      "Attribute D": "High performance in specific tasks",
+      "Attribute E": "Low adaptability",
+      "Attribute F": "Low complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Personalized Rule-based Agentic System",
+      "Attribute A": "Rule set tailored to individual",
+      "Attribute B": "Improved reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in specific tasks",
+      "Attribute E": "Moderate adaptability",
+      "Attribute F": "Moderate complexity",
+      "Attribute G": "Moderate scalability"
+    },
+    {
+      "Subtype": "Artificial Neural Network (ANN) Agentic System",
+      "Attribute A": "Learning from data",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Reinforcement Learning Agentic System",
+      "Attribute A": "Learning from rewards",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Fuzzy Logic Agentic System",
+      "Attribute A": "Rule-based reasoning with fuzzy logic",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in uncertain environments",
+      "Attribute E": "Moderate adaptability",
+      "Attribute F": "Moderate complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Evolutionary Agentic System",
+      "Attribute A": "Evolutionary algorithms for optimization",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Swarm Intelligence Agentic System",
+      "Attribute A": "Distributed decision-making",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Neuro-fuzzy Agentic System",
+      "Attribute A": "Hybrid of neural networks and fuzzy logic",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Bayesian Agentic System",
+      "Attribute A": "Probabilistic reasoning",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Decision Tree Agentic System",
+      "Attribute A": "Hierarchical decision-making",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Artificial Immune System Agentic System",
+      "Attribute A": "Immune system-inspired learning",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    },
+    {
+      "Subtype": "Swarm Intelligence Agentic System",
+      "Attribute A": "Swarm behavior-inspired decision-making",
+      "Attribute B": "Adaptive reasoning capabilities",
+      "Attribute C": "Dynamic knowledge base",
+      "Attribute D": "High performance in dynamic environments",
+      "Attribute E": "High adaptability",
+      "Attribute F": "High complexity",
+      "Attribute G": "Low scalability"
+    }
+  ]
+}

@@ -1,0 +1,975 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+import logging
+import os
+from pathlib import Path
+import shutil
+import tempfile
+
+from main_app.shared.slideshow.representation_normalizer import (
+    is_progressive_representation,
+    normalize_slide_representation,
+)
+from main_app.contracts import SlideContent, VideoPayload
+from main_app.services.text_sanitizer import sanitize_text
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _VideoTemplateStyle:
+    key: str
+    top_bg: tuple[int, int, int]
+    bottom_bg: tuple[int, int, int]
+    meta_color: tuple[int, int, int]
+    section_color: tuple[int, int, int]
+    title_color: tuple[int, int, int]
+    bullet_color: tuple[int, int, int]
+    code_box_fill: tuple[int, int, int]
+    code_box_outline: tuple[int, int, int]
+    code_text_color: tuple[int, int, int]
+    accent_color: tuple[int, int, int]
+    title_size: int
+    meta_size: int
+    bullet_size: int
+    code_size: int
+
+
+class VideoExportService:
+    _WIDTH = 1280
+    _HEIGHT = 720
+    _FPS = 24
+    _ANIMATION_STYLES = {"none", "smooth", "youtube_dynamic"}
+    _TEMPLATES: dict[str, _VideoTemplateStyle] = {
+        "standard": _VideoTemplateStyle(
+            key="standard",
+            top_bg=(18, 37, 70),
+            bottom_bg=(7, 13, 26),
+            meta_color=(214, 233, 255),
+            section_color=(163, 203, 255),
+            title_color=(255, 255, 255),
+            bullet_color=(235, 242, 252),
+            code_box_fill=(13, 24, 45),
+            code_box_outline=(72, 96, 134),
+            code_text_color=(212, 227, 244),
+            accent_color=(66, 134, 244),
+            title_size=44,
+            meta_size=22,
+            bullet_size=28,
+            code_size=18,
+        ),
+        "youtube": _VideoTemplateStyle(
+            key="youtube",
+            top_bg=(25, 28, 34),
+            bottom_bg=(8, 10, 14),
+            meta_color=(240, 240, 240),
+            section_color=(255, 92, 92),
+            title_color=(255, 255, 255),
+            bullet_color=(242, 242, 242),
+            code_box_fill=(17, 20, 27),
+            code_box_outline=(226, 51, 51),
+            code_text_color=(238, 238, 238),
+            accent_color=(235, 52, 52),
+            title_size=46,
+            meta_size=22,
+            bullet_size=29,
+            code_size=18,
+        ),
+    }
+
+    def build_video_mp4(
+        self,
+        *,
+        topic: str,
+        video_payload: VideoPayload,
+        audio_bytes: bytes,
+        template_key: str | None = None,
+        animation_style: str | None = None,
+    ) -> tuple[bytes | None, str | None]:
+        if not audio_bytes:
+            return None, "Audio is required before building full video."
+
+        slides = video_payload.get("slides", [])
+        if not isinstance(slides, list) or not slides:
+            return None, "No slides found in video payload."
+
+        try:
+            from PIL import Image, ImageDraw, ImageFont  # type: ignore
+            from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips, vfx  # type: ignore
+        except ImportError:
+            return None, "Video export requires `moviepy` and `Pillow`. Install dependencies and retry."
+
+        selected_template_key = self._resolve_template_key(template_key=template_key, video_payload=video_payload)
+        selected_animation_style = self._resolve_animation_style(
+            animation_style=animation_style,
+            video_payload=video_payload,
+            selected_template_key=selected_template_key,
+        )
+        template = self._TEMPLATES[selected_template_key]
+
+        audio_clip = None
+        video_clip = None
+        all_visual_clips: list[object] = []
+        render_root: Path | None = None
+        try:
+            render_root = self._create_render_workdir()
+            audio_path = render_root / "narration.mp3"
+            output_path = render_root / "rendered_video.mp4"
+            audio_path.write_bytes(audio_bytes)
+
+            audio_clip = AudioFileClip(self._moviepy_path(audio_path))
+            audio_duration = max(float(audio_clip.duration or 0.0), 1.0)
+            slide_durations = self._compute_slide_durations(
+                slides=slides,
+                slide_scripts=video_payload.get("slide_scripts"),
+                audio_duration=audio_duration,
+            )
+
+            for index, (slide, duration) in enumerate(zip(slides, slide_durations), start=1):
+                slide_clips = self._build_slide_clips(
+                    slide=slide if isinstance(slide, dict) else {},
+                    topic=topic,
+                    index=index,
+                    total=len(slides),
+                    duration=float(duration),
+                    path_prefix=render_root / f"slide_{index:03d}",
+                    image_module=Image,
+                    draw_module=ImageDraw,
+                    font_module=ImageFont,
+                    image_clip_cls=ImageClip,
+                    moviepy_vfx=vfx,
+                    template=template,
+                    animation_style=selected_animation_style,
+                )
+                all_visual_clips.extend(slide_clips)
+
+            transition_sec = self._transition_seconds(animation_style=selected_animation_style)
+            stitched_clips: list[object] = []
+            for idx, clip in enumerate(all_visual_clips):
+                if idx > 0 and transition_sec > 0:
+                    clip = clip.crossfadein(min(transition_sec, max(float(clip.duration), 0.0) / 2.0))
+                stitched_clips.append(clip)
+
+            video_clip = concatenate_videoclips(
+                stitched_clips,
+                method="compose",
+                padding=(-transition_sec if transition_sec > 0 else 0),
+            )
+            video_clip = video_clip.set_audio(audio_clip)
+            video_clip.write_videofile(
+                self._moviepy_path(output_path),
+                fps=self._FPS,
+                codec="libx264",
+                audio_codec="aac",
+                logger=None,
+            )
+
+            if not output_path.exists():
+                return None, "Video rendering failed: output file was not produced."
+            return output_path.read_bytes(), None
+        except (OSError, ValueError, RuntimeError, TypeError) as exc:
+            return None, f"Failed to render video: {exc}"
+        finally:
+            for clip in all_visual_clips:
+                try:
+                    clip.close()
+                except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+                    logger.debug("Video image clip close failed: %s", exc)
+            if video_clip is not None:
+                try:
+                    video_clip.close()
+                except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+                    logger.debug("Video clip close failed: %s", exc)
+            if audio_clip is not None:
+                try:
+                    audio_clip.close()
+                except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+                    logger.debug("Audio clip close failed: %s", exc)
+            if render_root is not None:
+                self._cleanup_render_workdir(render_root)
+
+    def _build_slide_clips(
+        self,
+        *,
+        slide: SlideContent,
+        topic: str,
+        index: int,
+        total: int,
+        duration: float,
+        path_prefix: Path,
+        image_module: object,
+        draw_module: object,
+        font_module: object,
+        image_clip_cls: object,
+        moviepy_vfx: object,
+        template: _VideoTemplateStyle,
+        animation_style: str,
+    ) -> list[object]:
+        clips: list[object] = []
+        normalized_slide, _ = normalize_slide_representation(slide if isinstance(slide, dict) else {})
+        has_code = bool(
+            sanitize_text(normalized_slide.get("code_snippet", ""), keep_citations=False, preserve_newlines=True)
+        )
+        if self._should_use_progressive_reveal(slide=normalized_slide, animation_style=animation_style):
+            reveal_steps = self._reveal_steps(slide=normalized_slide)
+            ratios = self._segment_ratios(count=len(reveal_steps))
+            for pos, (revealed_bullets, ratio) in enumerate(zip(reveal_steps, ratios)):
+                stage_duration = max(0.9, duration * ratio)
+                image_path = path_prefix.with_name(f"{path_prefix.name}_stage_{pos+1:02d}.png")
+                self._render_slide_image(
+                    slide=normalized_slide,
+                    topic=topic,
+                    index=index,
+                    total=total,
+                    path=image_path,
+                    image_module=image_module,
+                    draw_module=draw_module,
+                    font_module=font_module,
+                    template=template,
+                    revealed_bullets=revealed_bullets,
+                    code_emphasis=has_code and pos == len(reveal_steps) - 1,
+                )
+                clip = image_clip_cls(self._moviepy_path(image_path)).set_duration(stage_duration)
+                clip = self._apply_motion(
+                    clip=clip,
+                    duration=stage_duration,
+                    animation_style=animation_style,
+                    moviepy_vfx=moviepy_vfx,
+                )
+                clips.append(clip)
+            return clips
+
+        image_path = path_prefix.with_suffix(".png")
+        self._render_slide_image(
+            slide=normalized_slide,
+            topic=topic,
+            index=index,
+            total=total,
+            path=image_path,
+            image_module=image_module,
+            draw_module=draw_module,
+            font_module=font_module,
+            template=template,
+            revealed_bullets=None,
+            code_emphasis=False,
+        )
+        clip = image_clip_cls(self._moviepy_path(image_path)).set_duration(duration)
+        clip = self._apply_motion(
+            clip=clip,
+            duration=duration,
+            animation_style=animation_style,
+            moviepy_vfx=moviepy_vfx,
+        )
+        clips.append(clip)
+        return clips
+
+    @staticmethod
+    def _should_use_progressive_reveal(*, slide: SlideContent, animation_style: str) -> bool:
+        normalized_slide, _ = normalize_slide_representation(slide if isinstance(slide, dict) else {})
+        representation = " ".join(str(normalized_slide.get("representation", "bullet")).split()).strip().lower()
+        return animation_style == "youtube_dynamic" and is_progressive_representation(representation)
+
+    def _apply_motion(self, *, clip: object, duration: float, animation_style: str, moviepy_vfx: object) -> object:
+        if animation_style == "none":
+            return clip
+
+        if animation_style == "smooth":
+            start_zoom = 1.0
+            end_zoom = 1.05
+        else:
+            start_zoom = 1.01
+            end_zoom = 1.11
+
+        safe_duration = max(duration, 0.05)
+        animated = clip.resize(lambda t: start_zoom + (end_zoom - start_zoom) * (float(t) / safe_duration))
+        animated = animated.fx(
+            moviepy_vfx.crop,
+            x_center=self._WIDTH / 2,
+            y_center=self._HEIGHT / 2,
+            width=self._WIDTH,
+            height=self._HEIGHT,
+        )
+        return animated
+
+    @staticmethod
+    def _reveal_steps(*, slide: SlideContent) -> list[int]:
+        representation = " ".join(str(slide.get("representation", "bullet")).split()).strip().lower()
+        layout_payload = slide.get("layout_payload", {})
+        payload = layout_payload if isinstance(layout_payload, dict) else {}
+        if representation == "timeline":
+            events = payload.get("events", [])
+            bullet_count = len(events) if isinstance(events, list) else 0
+        elif representation == "process_flow":
+            steps = payload.get("steps", [])
+            bullet_count = len(steps) if isinstance(steps, list) else 0
+        else:
+            bullets = slide.get("bullets", [])
+            bullet_count = len(bullets) if isinstance(bullets, list) else 0
+        if bullet_count <= 1:
+            return [max(1, bullet_count)]
+        if bullet_count == 2:
+            return [1, 2]
+        near_full = max(2, bullet_count - 1)
+        steps = [1, near_full, bullet_count]
+        deduped: list[int] = []
+        for value in steps:
+            if value not in deduped:
+                deduped.append(value)
+        return deduped
+
+    @staticmethod
+    def _segment_ratios(*, count: int) -> list[float]:
+        if count <= 1:
+            return [1.0]
+        if count == 2:
+            return [0.42, 0.58]
+        if count == 3:
+            return [0.24, 0.31, 0.45]
+        equal = 1.0 / float(count)
+        return [equal for _ in range(count)]
+
+    @staticmethod
+    def _transition_seconds(*, animation_style: str) -> float:
+        if animation_style == "none":
+            return 0.0
+        if animation_style == "smooth":
+            return 0.28
+        return 0.18
+
+    def _compute_slide_durations(
+        self,
+        *,
+        slides: list[SlideContent],
+        slide_scripts: object,
+        audio_duration: float,
+    ) -> list[float]:
+        raw_hints = self._duration_hints_from_scripts(slides=slides, slide_scripts=slide_scripts)
+        if not raw_hints:
+            per_slide = audio_duration / max(len(slides), 1)
+            return [max(2.0, per_slide) for _ in slides]
+
+        total_hint = float(sum(raw_hints))
+        if total_hint <= 0:
+            per_slide = audio_duration / max(len(slides), 1)
+            return [max(2.0, per_slide) for _ in slides]
+
+        scale = audio_duration / total_hint
+        durations = [max(2.0, value * scale) for value in raw_hints]
+        drift = audio_duration - float(sum(durations))
+        if durations:
+            durations[-1] = max(2.0, durations[-1] + drift)
+        return durations
+
+    @staticmethod
+    def _duration_hints_from_scripts(*, slides: list[SlideContent], slide_scripts: object) -> list[float]:
+        scripts = slide_scripts if isinstance(slide_scripts, list) else []
+        hints: list[float] = []
+        by_index: dict[int, float] = {}
+
+        for pos, script in enumerate(scripts):
+            if not isinstance(script, dict):
+                continue
+            raw_index = script.get("slide_index", pos + 1)
+            try:
+                slide_index = int(raw_index) - 1
+            except (TypeError, ValueError):
+                slide_index = pos
+            raw_duration = script.get("estimated_duration_sec", 0)
+            try:
+                duration = float(raw_duration)
+            except (TypeError, ValueError):
+                duration = 0.0
+            if duration <= 0:
+                turns = script.get("dialogue", [])
+                if isinstance(turns, list):
+                    word_count = 0
+                    for turn in turns:
+                        if isinstance(turn, dict):
+                            word_count += len(str(turn.get("text", "")).split())
+                    duration = max(6.0, (word_count / 150.0) * 60.0)
+                else:
+                    duration = 6.0
+            by_index[slide_index] = max(3.0, duration)
+
+        for idx, slide in enumerate(slides):
+            hint = by_index.get(idx)
+            if hint is not None:
+                hints.append(hint)
+                continue
+            slide_dict = slide if isinstance(slide, dict) else {}
+            bullet_count = len(slide_dict.get("bullets", [])) if isinstance(slide_dict.get("bullets"), list) else 0
+            base = 5.0 + float(bullet_count) * 1.2
+            if str(slide_dict.get("code_snippet", "")).strip():
+                base += 3.0
+            hints.append(max(4.0, base))
+        return hints
+
+    def _render_slide_image(
+        self,
+        *,
+        slide: SlideContent,
+        topic: str,
+        index: int,
+        total: int,
+        path: Path,
+        image_module: object,
+        draw_module: object,
+        font_module: object,
+        template: _VideoTemplateStyle,
+        revealed_bullets: int | None,
+        code_emphasis: bool,
+    ) -> None:
+        image = image_module.new("RGB", (self._WIDTH, self._HEIGHT), color=template.top_bg)
+        draw = draw_module.Draw(image)
+
+        self._draw_gradient_background(
+            image=image,
+            image_module=image_module,
+            top=template.top_bg,
+            bottom=template.bottom_bg,
+        )
+
+        title_font, title_size = self._load_font(
+            font_module=font_module,
+            preferred_size=template.title_size,
+            bold=True,
+            mono=False,
+            min_size=30,
+        )
+        meta_font, _ = self._load_font(
+            font_module=font_module,
+            preferred_size=template.meta_size,
+            bold=False,
+            mono=False,
+            min_size=18,
+        )
+        bullet_font, bullet_size = self._load_font(
+            font_module=font_module,
+            preferred_size=template.bullet_size,
+            bold=False,
+            mono=False,
+            min_size=20,
+        )
+        code_font, _ = self._load_font(
+            font_module=font_module,
+            preferred_size=template.code_size,
+            bold=False,
+            mono=True,
+            min_size=14,
+        )
+
+        section = sanitize_text(slide.get("section", "Section"), keep_citations=False)
+        title = sanitize_text(slide.get("title", f"Slide {index}"), keep_citations=False) or f"Slide {index}"
+        safe_topic = sanitize_text(topic, keep_citations=False)
+
+        draw.rectangle(((0, 0), (self._WIDTH, 10)), fill=template.accent_color)
+        draw.text((60, 30), f"{safe_topic}  |  {index}/{total}", fill=template.meta_color, font=meta_font)
+        draw.text((60, 68), section, fill=template.section_color, font=meta_font)
+
+        title_lines, title_font = self._fit_wrapped_lines(
+            draw=draw,
+            text=title,
+            font_module=font_module,
+            preferred_size=title_size,
+            min_size=30,
+            max_width=self._WIDTH - 120,
+            max_lines=2,
+            bold=True,
+            mono=False,
+        )
+        y = 118
+        for line in title_lines:
+            draw.text((60, y), line, fill=template.title_color, font=title_font)
+            y += self._line_height(draw=draw, font=title_font, text=line) + 8
+
+        y += 6
+        y = self._draw_representation_body(
+            draw=draw,
+            slide=slide,
+            start_y=y,
+            bullet_font=bullet_font,
+            bullet_size=bullet_size,
+            meta_font=meta_font,
+            template=template,
+            revealed_bullets=revealed_bullets,
+        )
+
+        code_text = sanitize_text(slide.get("code_snippet", ""), keep_citations=False, preserve_newlines=True)
+        if code_text:
+            code_box_top = max(y + 8, 420)
+            code_box_bottom = self._HEIGHT - 44
+            outline_color = template.accent_color if code_emphasis else template.code_box_outline
+            outline_width = 3 if code_emphasis else 2
+            draw.rounded_rectangle(
+                ((60, code_box_top), (self._WIDTH - 60, code_box_bottom)),
+                radius=18,
+                fill=template.code_box_fill,
+                outline=outline_color,
+                width=outline_width,
+            )
+            code_lines = code_text.splitlines()[:10]
+            code_y = code_box_top + 14
+            for line in code_lines:
+                clean_line = line.rstrip()
+                draw.text((80, code_y), clean_line[:105], fill=template.code_text_color, font=code_font)
+                code_y += 24
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(path, format="PNG")
+
+    def _draw_representation_body(
+        self,
+        *,
+        draw: object,
+        slide: SlideContent,
+        start_y: int,
+        bullet_font: object,
+        bullet_size: int,
+        meta_font: object,
+        template: _VideoTemplateStyle,
+        revealed_bullets: int | None,
+    ) -> int:
+        normalized_slide, _ = normalize_slide_representation(slide if isinstance(slide, dict) else {})
+        representation = " ".join(str(normalized_slide.get("representation", "bullet")).split()).strip().lower()
+        layout_payload = normalized_slide.get("layout_payload", {})
+        payload = layout_payload if isinstance(layout_payload, dict) else {}
+
+        if representation in {"two_column", "comparison"}:
+            left_title = sanitize_text(payload.get("left_title", "Left"), keep_citations=False)
+            right_title = sanitize_text(payload.get("right_title", "Right"), keep_citations=False)
+            left_key = "left_items" if representation == "two_column" else "left_points"
+            right_key = "right_items" if representation == "two_column" else "right_points"
+            left_items = self._as_text_list(payload.get(left_key), max_items=4)
+            right_items = self._as_text_list(payload.get(right_key), max_items=4)
+            if not left_items and not right_items:
+                fallback = self._as_text_list(normalized_slide.get("bullets", []), max_items=6)
+                midpoint = max(1, len(fallback) // 2)
+                left_items = fallback[:midpoint]
+                right_items = fallback[midpoint:]
+            draw.text((70, start_y), left_title or "Left", fill=template.section_color, font=meta_font)
+            draw.text((680, start_y), right_title or "Right", fill=template.section_color, font=meta_font)
+            left_y = start_y + 34
+            right_y = start_y + 34
+            left_y = self._draw_bullet_lines(
+                draw=draw,
+                items=left_items,
+                x=70,
+                y=left_y,
+                max_width=520,
+                bullet_font=bullet_font,
+                bullet_size=bullet_size,
+                color=template.bullet_color,
+            )
+            right_y = self._draw_bullet_lines(
+                draw=draw,
+                items=right_items,
+                x=680,
+                y=right_y,
+                max_width=530,
+                bullet_font=bullet_font,
+                bullet_size=bullet_size,
+                color=template.bullet_color,
+            )
+            return max(left_y, right_y)
+
+        if representation == "timeline":
+            events = payload.get("events", [])
+            parsed_events: list[dict[str, str]] = []
+            if isinstance(events, list):
+                for event in events[:5]:
+                    if not isinstance(event, dict):
+                        continue
+                    label = sanitize_text(event.get("label", ""), keep_citations=False)
+                    detail = sanitize_text(event.get("detail", ""), keep_citations=False)
+                    if not label and not detail:
+                        continue
+                    parsed_events.append({"label": label or "Milestone", "detail": detail})
+            if not parsed_events:
+                fallback = self._as_text_list(normalized_slide.get("bullets", []), max_items=5)
+                parsed_events = [{"label": f"Milestone {idx + 1}", "detail": text} for idx, text in enumerate(fallback)]
+
+            visible = len(parsed_events) if revealed_bullets is None else max(0, min(len(parsed_events), int(revealed_bullets)))
+            y = start_y + 8
+            for event in parsed_events[:visible]:
+                draw.ellipse(((70, y + 10), (84, y + 24)), fill=template.accent_color)
+                draw.text((100, y), event["label"], fill=template.section_color, font=meta_font)
+                detail_lines = self._wrap_text_to_width(
+                    draw=draw,
+                    text=event["detail"],
+                    font=bullet_font,
+                    max_width=self._WIDTH - 200,
+                )[:2]
+                line_y = y + 28
+                for line in detail_lines:
+                    draw.text((100, line_y), line, fill=template.bullet_color, font=bullet_font)
+                    line_y += int(bullet_size * 1.1)
+                y = line_y + 10
+            if visible < len(parsed_events):
+                hidden = len(parsed_events) - visible
+                draw.text((100, y), f"... {hidden} more milestone(s)", fill=template.meta_color, font=meta_font)
+            return y + 12
+
+        if representation == "process_flow":
+            steps = payload.get("steps", [])
+            parsed_steps: list[dict[str, str]] = []
+            if isinstance(steps, list):
+                for step in steps[:5]:
+                    if not isinstance(step, dict):
+                        continue
+                    title = sanitize_text(step.get("title", ""), keep_citations=False)
+                    detail = sanitize_text(step.get("detail", ""), keep_citations=False)
+                    if not title and not detail:
+                        continue
+                    parsed_steps.append({"title": title or "Step", "detail": detail})
+            if not parsed_steps:
+                fallback = self._as_text_list(normalized_slide.get("bullets", []), max_items=5)
+                parsed_steps = [{"title": f"Step {idx + 1}", "detail": text} for idx, text in enumerate(fallback)]
+
+            visible = len(parsed_steps) if revealed_bullets is None else max(0, min(len(parsed_steps), int(revealed_bullets)))
+            y = start_y + 8
+            for idx, step in enumerate(parsed_steps[:visible], start=1):
+                box_height = 70
+                draw.rounded_rectangle(
+                    ((70, y), (self._WIDTH - 70, y + box_height)),
+                    radius=12,
+                    fill=template.code_box_fill,
+                    outline=template.code_box_outline,
+                    width=2,
+                )
+                draw.text((90, y + 8), f"{idx}. {step['title']}", fill=template.section_color, font=meta_font)
+                detail_lines = self._wrap_text_to_width(
+                    draw=draw,
+                    text=step["detail"],
+                    font=bullet_font,
+                    max_width=self._WIDTH - 180,
+                )[:2]
+                line_y = y + 34
+                for line in detail_lines:
+                    draw.text((95, line_y), line, fill=template.bullet_color, font=bullet_font)
+                    line_y += int(bullet_size * 1.05)
+                y += box_height + 10
+            if visible < len(parsed_steps):
+                hidden = len(parsed_steps) - visible
+                draw.text((90, y + 2), f"... {hidden} more step(s)", fill=template.meta_color, font=meta_font)
+            return y + 12
+
+        if representation == "metric_cards":
+            cards = payload.get("cards", [])
+            parsed_cards: list[dict[str, str]] = []
+            if isinstance(cards, list):
+                for card in cards[:4]:
+                    if not isinstance(card, dict):
+                        continue
+                    label = sanitize_text(card.get("label", ""), keep_citations=False)
+                    value = sanitize_text(card.get("value", ""), keep_citations=False)
+                    context = sanitize_text(card.get("context", ""), keep_citations=False)
+                    if not label and not value and not context:
+                        continue
+                    parsed_cards.append({"label": label or "Metric", "value": value, "context": context})
+            if not parsed_cards:
+                fallback = self._as_text_list(normalized_slide.get("bullets", []), max_items=4)
+                parsed_cards = [{"label": f"Metric {idx + 1}", "value": text, "context": ""} for idx, text in enumerate(fallback)]
+
+            card_w = 550
+            card_h = 110
+            positions = [(70, start_y + 8), (660, start_y + 8), (70, start_y + 136), (660, start_y + 136)]
+            for idx, card in enumerate(parsed_cards[:4]):
+                x, y = positions[idx]
+                draw.rounded_rectangle(
+                    ((x, y), (x + card_w, y + card_h)),
+                    radius=12,
+                    fill=template.code_box_fill,
+                    outline=template.code_box_outline,
+                    width=2,
+                )
+                draw.text((x + 14, y + 10), card["label"], fill=template.meta_color, font=meta_font)
+                value_lines = self._wrap_text_to_width(
+                    draw=draw,
+                    text=card["value"],
+                    font=bullet_font,
+                    max_width=card_w - 28,
+                )[:2]
+                line_y = y + 40
+                for line in value_lines:
+                    draw.text((x + 14, line_y), line, fill=template.title_color, font=bullet_font)
+                    line_y += int(bullet_size * 1.05)
+                if card["context"]:
+                    draw.text((x + 14, y + card_h - 24), card["context"][:80], fill=template.bullet_color, font=meta_font)
+            return start_y + 264
+
+        bullets = self._as_text_list(normalized_slide.get("bullets", []), max_items=6)
+        total_bullets = len(bullets)
+        visible_bullets = total_bullets if revealed_bullets is None else max(0, min(total_bullets, int(revealed_bullets)))
+        y = self._draw_bullet_lines(
+            draw=draw,
+            items=bullets[:visible_bullets],
+            x=70,
+            y=start_y,
+            max_width=self._WIDTH - 140,
+            bullet_font=bullet_font,
+            bullet_size=bullet_size,
+            color=template.bullet_color,
+        )
+        if visible_bullets < total_bullets:
+            hidden = total_bullets - visible_bullets
+            draw.text((70, y + 2), f"... {hidden} more point(s)", fill=template.meta_color, font=meta_font)
+        return y
+
+    def _draw_bullet_lines(
+        self,
+        *,
+        draw: object,
+        items: list[str],
+        x: int,
+        y: int,
+        max_width: int,
+        bullet_font: object,
+        bullet_size: int,
+        color: tuple[int, int, int],
+    ) -> int:
+        line_y = int(y)
+        for bullet in items:
+            bullet_text = sanitize_text(bullet, keep_citations=False)
+            if not bullet_text:
+                continue
+            wrapped = self._wrap_text_to_width(
+                draw=draw,
+                text=bullet_text,
+                font=bullet_font,
+                max_width=max_width,
+            )[:2]
+            for idx_line, line in enumerate(wrapped):
+                prefix = "- " if idx_line == 0 else "  "
+                draw.text((x, line_y), prefix + line, fill=color, font=bullet_font)
+                line_y += int(bullet_size * 1.18)
+            line_y += 6
+        return line_y
+
+    @staticmethod
+    def _as_text_list(value: object, *, max_items: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        cleaned: list[str] = []
+        for item in value:
+            text = sanitize_text(item, keep_citations=False)
+            if not text:
+                continue
+            cleaned.append(text)
+            if len(cleaned) >= max_items:
+                break
+        return cleaned
+
+    @staticmethod
+    def _draw_gradient_background(
+        *,
+        image: object,
+        image_module: object,
+        top: tuple[int, int, int],
+        bottom: tuple[int, int, int],
+    ) -> None:
+        width, height = image.size
+        gradient = image_module.new("RGB", (width, height), color=0)
+        pixels = gradient.load()
+        for y in range(height):
+            blend = float(y) / float(max(height - 1, 1))
+            r = int(top[0] * (1.0 - blend) + bottom[0] * blend)
+            g = int(top[1] * (1.0 - blend) + bottom[1] * blend)
+            b = int(top[2] * (1.0 - blend) + bottom[2] * blend)
+            for x in range(width):
+                pixels[x, y] = (r, g, b)
+        image.paste(gradient)
+
+    @classmethod
+    def _create_render_workdir(cls) -> Path:
+        configured = " ".join(str(os.getenv("VIDEO_RENDER_TMP_DIR", "")).split()).strip()
+        candidates: list[Path] = []
+        if configured:
+            candidates.append(Path(configured))
+        candidates.append(Path.cwd() / ".cache" / "video_render")
+        candidates.append(Path(tempfile.gettempdir()))
+
+        for root in candidates:
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+                workdir = Path(tempfile.mkdtemp(prefix="video_render_", dir=str(root)))
+                if workdir.exists() and workdir.is_dir():
+                    return workdir
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+        return Path(tempfile.mkdtemp(prefix="video_render_"))
+
+    @staticmethod
+    def _cleanup_render_workdir(path: Path) -> None:
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Failed to cleanup render workdir `%s`: %s", path, exc)
+
+    @staticmethod
+    def _moviepy_path(path: Path) -> str:
+        normalized = path.resolve()
+        if os.name == "nt":
+            return normalized.as_posix()
+        return str(normalized)
+
+    @classmethod
+    def _resolve_template_key(cls, *, template_key: str | None, video_payload: VideoPayload) -> str:
+        requested = " ".join(str(template_key or "").split()).strip().lower()
+        if requested in cls._TEMPLATES:
+            return requested
+        payload_key = " ".join(str(video_payload.get("video_template", "")).split()).strip().lower()
+        if payload_key in cls._TEMPLATES:
+            return payload_key
+        return "standard"
+
+    @classmethod
+    def _resolve_animation_style(
+        cls,
+        *,
+        animation_style: str | None,
+        video_payload: VideoPayload,
+        selected_template_key: str,
+    ) -> str:
+        requested = " ".join(str(animation_style or "").split()).strip().lower()
+        if requested in cls._ANIMATION_STYLES:
+            return requested
+        payload_style = " ".join(str(video_payload.get("animation_style", "")).split()).strip().lower()
+        if payload_style in cls._ANIMATION_STYLES:
+            return payload_style
+        if selected_template_key == "youtube":
+            return "youtube_dynamic"
+        return "smooth"
+
+    @staticmethod
+    def _font_candidates(*, bold: bool, mono: bool) -> list[str]:
+        if mono:
+            return [
+                r"C:\Windows\Fonts\consola.ttf",
+                r"C:\Windows\Fonts\cour.ttf",
+                "Consolas.ttf",
+                "DejaVuSansMono.ttf",
+                "/System/Library/Fonts/Menlo.ttc",
+                "/System/Library/Fonts/SFNSMono.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            ]
+        if bold:
+            return [
+                r"C:\Windows\Fonts\arialbd.ttf",
+                r"C:\Windows\Fonts\segoeuib.ttf",
+                "Arial Bold.ttf",
+                "DejaVuSans-Bold.ttf",
+                "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+                "/System/Library/Fonts/Supplemental/Helvetica Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ]
+        return [
+            r"C:\Windows\Fonts\arial.ttf",
+            r"C:\Windows\Fonts\segoeui.ttf",
+            "Arial.ttf",
+            "DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Helvetica.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+
+    @classmethod
+    def _load_font(
+        cls,
+        *,
+        font_module: object,
+        preferred_size: int,
+        bold: bool,
+        mono: bool,
+        min_size: int,
+    ) -> tuple[object, int]:
+        font_candidates = cls._font_candidates(bold=bold, mono=mono)
+        size = int(preferred_size)
+        while size >= int(min_size):
+            for candidate in font_candidates:
+                try:
+                    return font_module.truetype(candidate, size), size
+                except (OSError, AttributeError, RuntimeError):
+                    continue
+            size -= 1
+        return font_module.load_default(), int(min_size)
+
+    @staticmethod
+    def _measure_text(*, draw: object, text: str, font: object) -> tuple[int, int]:
+        try:
+            left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+            return max(1, right - left), max(1, bottom - top)
+        except AttributeError:
+            width, height = draw.textsize(text, font=font)
+            return max(1, int(width)), max(1, int(height))
+
+    @classmethod
+    def _line_height(cls, *, draw: object, font: object, text: str = "Ag") -> int:
+        _, height = cls._measure_text(draw=draw, text=text, font=font)
+        return max(1, int(height))
+
+    @classmethod
+    def _wrap_text_to_width(cls, *, draw: object, text: str, font: object, max_width: int) -> list[str]:
+        words = [item for item in str(text).split() if item]
+        if not words:
+            return []
+
+        lines: list[str] = []
+        current = words[0]
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            width, _ = cls._measure_text(draw=draw, text=candidate, font=font)
+            if width <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        return lines
+
+    @classmethod
+    def _fit_wrapped_lines(
+        cls,
+        *,
+        draw: object,
+        text: str,
+        font_module: object,
+        preferred_size: int,
+        min_size: int,
+        max_width: int,
+        max_lines: int,
+        bold: bool,
+        mono: bool,
+    ) -> tuple[list[str], object]:
+        size = int(preferred_size)
+        while size >= int(min_size):
+            font, _ = cls._load_font(
+                font_module=font_module,
+                preferred_size=size,
+                bold=bold,
+                mono=mono,
+                min_size=size,
+            )
+            wrapped = cls._wrap_text_to_width(
+                draw=draw,
+                text=text,
+                font=font,
+                max_width=max_width,
+            )
+            if wrapped and len(wrapped) <= max_lines:
+                return wrapped, font
+            size -= 1
+
+        final_font, _ = cls._load_font(
+            font_module=font_module,
+            preferred_size=min_size,
+            bold=bold,
+            mono=mono,
+            min_size=min_size,
+        )
+        wrapped = cls._wrap_text_to_width(draw=draw, text=text, font=final_font, max_width=max_width)
+        if not wrapped:
+            return [text], final_font
+        return wrapped[:max_lines], final_font

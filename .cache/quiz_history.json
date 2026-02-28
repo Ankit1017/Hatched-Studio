@@ -1,0 +1,569 @@
+{
+  "quizzes": [
+    {
+      "id": "abfcf7ccdc26429d",
+      "topic": "Transitioning to Agentic AI Systems",
+      "difficulty": "Intermediate",
+      "constraints": "Focus on architecture and production trade-offs.",
+      "model": "llama-3.1-8b-instant",
+      "created_at": "2026-02-13T18:11:52+00:00",
+      "quiz": {
+        "topic": "Transitioning to Agentic AI Systems",
+        "questions": [
+          {
+            "question": "What is a key consideration when transitioning to agentic AI systems in terms of their decision-making architecture?",
+            "options": [
+              "Centralized control with a single decision-maker",
+              "Decentralized control with multiple decision-makers and conflict resolution mechanisms",
+              "Hierarchical control with a top-down decision-making approach",
+              "Distributed control with a focus on individual agent autonomy"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "Which of the following is a potential trade-off when implementing agentic AI systems in production environments?",
+            "options": [
+              "Increased efficiency vs. reduced flexibility",
+              "Improved scalability vs. decreased reliability",
+              "Enhanced autonomy vs. increased explainability",
+              "Better adaptability vs. reduced security"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "What is a common challenge when transitioning to agentic AI systems in terms of their ability to learn and adapt?",
+            "options": [
+              "Overfitting to a specific task or environment",
+              "Underfitting to a complex or dynamic environment",
+              "Inability to generalize across different contexts",
+              "Insufficient data to support effective learning"
+            ],
+            "correct_index": 3
+          },
+          {
+            "question": "Which of the following is a key factor to consider when designing the reward functions for agentic AI systems?",
+            "options": [
+              "Alignment with human values and goals",
+              "Optimization for short-term gains or profits",
+              "Flexibility to adapt to changing environments",
+              "Scalability to support large numbers of agents"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is a potential pitfall when implementing agentic AI systems in complex, dynamic environments?",
+            "options": [
+              "Inability to handle conflicting goals or objectives",
+              "Difficulty in scaling to support large numbers of agents",
+              "Inadequate consideration of contextual factors and nuances",
+              "Insufficient testing and validation of the system"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is a key consideration when transitioning to agentic AI systems in terms of their ability to interact with humans?",
+            "options": [
+              "Designing interfaces that are easy to use and understand",
+              "Developing algorithms that can accurately interpret human intent",
+              "Implementing mechanisms for transparent and explainable decision-making",
+              "Ensuring that the system is robust to human error or variability"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "What is a potential trade-off when implementing agentic AI systems in production environments in terms of their ability to learn and adapt?",
+            "options": [
+              "Increased adaptability vs. decreased robustness",
+              "Improved efficiency vs. reduced flexibility",
+              "Enhanced autonomy vs. increased explainability",
+              "Better scalability vs. decreased reliability"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a key factor to consider when designing the architecture for agentic AI systems?",
+            "options": [
+              "Modularity and flexibility to support changing requirements",
+              "Scalability to support large numbers of agents and complex environments",
+              "Robustness to handle failures or anomalies in the system",
+              "Explainability to support transparent and accountable decision-making"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is a potential challenge when transitioning to agentic AI systems in terms of their ability to handle complex, dynamic environments?",
+            "options": [
+              "Inability to handle conflicting goals or objectives",
+              "Difficulty in scaling to support large numbers of agents",
+              "Inadequate consideration of contextual factors and nuances",
+              "Insufficient testing and validation of the system"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is a key consideration when implementing agentic AI systems in production environments in terms of their ability to interact with humans?",
+            "options": [
+              "Designing interfaces that are easy to use and understand",
+              "Developing algorithms that can accurately interpret human intent",
+              "Implementing mechanisms for transparent and explainable decision-making",
+              "Ensuring that the system is robust to human error or variability"
+            ],
+            "correct_index": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "ab3a8ae570ec4502",
+      "topic": "CDC Pipeline",
+      "difficulty": "Intermediate",
+      "constraints": "",
+      "model": "openai/gpt-oss-120b",
+      "created_at": "2026-02-14T09:30:26+00:00",
+      "quiz": {
+        "topic": "CDC Pipeline",
+        "questions": [
+          {
+            "question": "In a typical CDC pipeline using Kafka Connect, which component is responsible for converting the raw change events from the source database into a format suitable for downstream consumers?",
+            "options": [
+              "Source connector",
+              "Sink connector",
+              "Single Message Transform (SMT)",
+              "Kafka Streams application"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "When designing a CDC pipeline that must guarantee exactly‑once delivery to a downstream data warehouse, which combination of features is essential?",
+            "options": [
+              "At‑least‑once semantics in the source connector and idempotent writes in the sink",
+              "Transactional writes in Kafka and exactly‑once semantics in the sink connector",
+              "Log compaction on the Kafka topic and periodic snapshotting of the source database",
+              "Batch processing of change events and manual deduplication logic"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "A CDC pipeline must handle schema evolution (e.g., adding a new column). Which strategy minimizes disruption to downstream consumers?",
+            "options": [
+              "Drop and recreate the Kafka topic whenever the schema changes",
+              "Emit a separate \"schema change\" event and require consumers to restart",
+              "Use a schema registry to version the Avro/Protobuf schema and allow consumers to read the latest version",
+              "Encode the entire row as a JSON string each time, ignoring the schema"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is the most common cause of out‑of‑order events in a CDC pipeline that reads from MySQL binlog?",
+            "options": [
+              "Multiple source connectors reading the same binlog concurrently",
+              "Parallel processing of events in the sink without preserving transaction boundaries",
+              "Using row‑based replication instead of statement‑based replication",
+              "Enabling GTID mode on the MySQL server"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "In a CDC pipeline that uses Debezium as the source connector, what is the purpose of the \"heartbeat\" topic?",
+            "options": [
+              "To store periodic snapshots of the source database for recovery",
+              "To provide a regular signal that the connector is alive and to advance Kafka offsets for idle tables",
+              "To replicate the MySQL binary log file names for auditing",
+              "To broadcast schema changes to all downstream consumers"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "When scaling a CDC pipeline horizontally, which element must be partitioned to ensure that all changes for a given primary key are processed in order?",
+            "options": [
+              "The Kafka topic's number of partitions based on the primary key hash",
+              "The source connector's internal thread pool",
+              "The sink connector's batch size configuration",
+              "The schema registry's versioning scheme"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "A CDC pipeline is experiencing high latency during peak load. Which tuning action is most likely to reduce end‑to‑end latency without sacrificing data integrity?",
+            "options": [
+              "Increase the Kafka topic retention period",
+              "Enable log compaction on the CDC topic",
+              "Raise the \"max.poll.records\" setting in the source connector and reduce the commit interval",
+              "Switch from row‑based to statement‑based change capture"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which error‑handling pattern is recommended when a sink connector fails to write a batch of CDC records due to a temporary downstream outage?",
+            "options": [
+              "Drop the failed batch and continue with the next one",
+              "Move the entire topic to a dead‑letter queue and stop the pipeline",
+              "Pause the connector, retry the batch with exponential backoff, and resume once successful",
+              "Rewrite the failed records with a different primary key to avoid conflict"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "In a CDC pipeline that streams changes to a data lake in Parquet format, why is it advisable to include the change event's \"commit timestamp\" as a partition column?",
+            "options": [
+              "It enables time‑travel queries and simplifies incremental loading",
+              "It reduces the size of each Parquet file automatically",
+              "It allows Kafka to reorder messages based on timestamps",
+              "It eliminates the need for a schema registry"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following statements best describes the trade‑off between using a log‑based CDC approach versus a trigger‑based CDC approach?",
+            "options": [
+              "Log‑based CDC provides lower latency but higher CPU usage on the source database",
+              "Trigger‑based CDC captures schema changes automatically, while log‑based CDC does not",
+              "Log‑based CDC is non‑intrusive and can capture all committed transactions, whereas trigger‑based CDC adds overhead to each DML operation",
+              "Trigger‑based CDC works only with NoSQL databases, while log‑based CDC works only with relational databases"
+            ],
+            "correct_index": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "4c1460bc3e1446fb",
+      "topic": "quiz",
+      "difficulty": "Intermediate",
+      "constraints": "Maximum 3 attempts per question",
+      "model": "llama-3.1-8b-instant",
+      "created_at": "2026-02-14T12:57:38+00:00",
+      "quiz": {
+        "topic": "Quiz",
+        "questions": [
+          {
+            "question": "What is the primary purpose of a quiz?",
+            "options": [
+              "To assess prior knowledge of a subject",
+              "To provide a fun and engaging learning experience",
+              "To evaluate the effectiveness of a teaching method",
+              "To generate random trivia questions"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a common type of quiz question?",
+            "options": [
+              "Multiple-choice question",
+              "True or False question",
+              "Essay question",
+              "Fill-in-the-blank question"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "What is the term for a quiz question that requires a short written answer?",
+            "options": [
+              "Short-answer question",
+              "Essay question",
+              "Fill-in-the-blank question",
+              "Multiple-choice question"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a benefit of using quizzes in education?",
+            "options": [
+              "Improved student motivation",
+              "Increased student anxiety",
+              "Better student retention",
+              "More effective teaching methods"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is the term for a quiz question that requires the student to select the correct answer from a list of options?",
+            "options": [
+              "Multiple-choice question",
+              "True or False question",
+              "Essay question",
+              "Fill-in-the-blank question"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a common type of quiz question that requires the student to evaluate the truth of a statement?",
+            "options": [
+              "True or False question",
+              "Multiple-choice question",
+              "Essay question",
+              "Fill-in-the-blank question"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is the term for a quiz question that requires the student to provide a short written answer to a question?",
+            "options": [
+              "Short-answer question",
+              "Essay question",
+              "Fill-in-the-blank question",
+              "Multiple-choice question"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a benefit of using quizzes in assessment?",
+            "options": [
+              "Improved student motivation",
+              "Increased student anxiety",
+              "Better student retention",
+              "More accurate assessment of student knowledge"
+            ],
+            "correct_index": 3
+          },
+          {
+            "question": "What is the term for a quiz question that requires the student to complete a sentence or phrase with a missing word?",
+            "options": [
+              "Fill-in-the-blank question",
+              "Multiple-choice question",
+              "True or False question",
+              "Essay question"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is a common type of quiz question that requires the student to select the correct answer from a list of options, but with a twist?",
+            "options": [
+              "True or False question",
+              "Multiple-choice question",
+              "Essay question",
+              "Fill-in-the-blank question"
+            ],
+            "correct_index": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "c35dd4abfd6f41d8",
+      "topic": "Personality",
+      "difficulty": "Beginner",
+      "constraints": "Multiple Choice, Limited Time",
+      "model": "llama-3.1-8b-instant",
+      "created_at": "2026-02-14T13:23:55+00:00",
+      "quiz": {
+        "topic": "Personality",
+        "questions": [
+          {
+            "question": "What is the primary function of the Big Five personality traits?",
+            "options": [
+              "To identify a person's intelligence quotient",
+              "To categorize people based on their social status",
+              "To describe a person's patterns of thoughts, feelings, and behaviors",
+              "To predict a person's career choices"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is an example of an introverted personality trait?",
+            "options": [
+              "Being outgoing and sociable",
+              "Being reserved and preferring to work alone",
+              "Being highly competitive",
+              "Being highly creative"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "What is the term for a person's consistent patterns of thoughts, feelings, and behaviors?",
+            "options": [
+              "Personality type",
+              "Personality trait",
+              "Personality disorder",
+              "Personality profile"
+            ],
+            "correct_index": 3
+          },
+          {
+            "question": "Which of the following is a characteristic of an individual with a Type A personality?",
+            "options": [
+              "Being highly competitive and perfectionistic",
+              "Being highly cooperative and laid-back",
+              "Being highly creative and spontaneous",
+              "Being highly analytical and detail-oriented"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is the term for the study of personality, including its measurement and development?",
+            "options": [
+              "Personality psychology",
+              "Social psychology",
+              "Developmental psychology",
+              "Cognitive psychology"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is an example of a personality disorder?",
+            "options": [
+              "Avoidant personality disorder",
+              "Borderline personality disorder",
+              "Schizoid personality disorder",
+              "All of the above"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "What is the term for a person's self-concept, including their attitudes, values, and beliefs?",
+            "options": [
+              "Self-esteem",
+              "Self-awareness",
+              "Self-concept",
+              "Self-actualization"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is a characteristic of an individual with a Type B personality?",
+            "options": [
+              "Being highly competitive and perfectionistic",
+              "Being highly cooperative and laid-back",
+              "Being highly creative and spontaneous",
+              "Being highly analytical and detail-oriented"
+            ],
+            "correct_index": 1
+          },
+          {
+            "question": "What is the term for the process of developing a person's personality through experience and learning?",
+            "options": [
+              "Personality development",
+              "Personality formation",
+              "Personality growth",
+              "Personality change"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "Which of the following is an example of a personality test?",
+            "options": [
+              "Myers-Briggs Type Indicator (MBTI)",
+              "Big Five personality traits",
+              "Minnesota Multiphasic Personality Inventory (MMPI)",
+              "All of the above"
+            ],
+            "correct_index": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "f30488e12e024324",
+      "topic": "CDC Pipeline",
+      "difficulty": "Intermediate",
+      "constraints": "Focus on archietechture and use-case basis",
+      "model": "llama-3.1-8b-instant",
+      "created_at": "2026-02-14T18:15:44+00:00",
+      "quiz": {
+        "topic": "CDC Pipeline",
+        "questions": [
+          {
+            "question": "What is the primary purpose of the CDC Pipeline in a data processing architecture?",
+            "options": [
+              "To provide real-time data processing capabilities",
+              "To handle batch processing of large datasets",
+              "To enable data streaming and event-driven processing",
+              "To serve as a data warehousing solution"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "Which of the following is a key benefit of using a CDC (Change Data Capture) Pipeline?",
+            "options": [
+              "Improved data consistency and accuracy",
+              "Enhanced data security and compliance",
+              "Increased data processing speed and efficiency",
+              "Better data integration and interoperability"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "In a CDC Pipeline, what is the role of the 'source' component?",
+            "options": [
+              "To capture and process changes to the data",
+              "To store and manage the data",
+              "To transform and format the data",
+              "To deliver the data to the target system"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "What is the primary advantage of using a CDC Pipeline in a data integration scenario?",
+            "options": [
+              "Reduced data latency and increased real-time processing capabilities",
+              "Improved data quality and reduced data inconsistencies",
+              "Enhanced data security and compliance",
+              "Increased data processing speed and efficiency"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "In a CDC Pipeline, what is the purpose of the 'target' component?",
+            "options": [
+              "To capture and process changes to the data",
+              "To store and manage the data",
+              "To transform and format the data",
+              "To deliver the data to the target system"
+            ],
+            "correct_index": 3
+          },
+          {
+            "question": "Which of the following is a common use case for a CDC Pipeline?",
+            "options": [
+              "Real-time analytics and reporting",
+              "Data warehousing and business intelligence",
+              "Data integration and ETL (Extract, Transform, Load)",
+              "Data security and compliance"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "In a CDC Pipeline, what is the role of the 'transform' component?",
+            "options": [
+              "To capture and process changes to the data",
+              "To store and manage the data",
+              "To transform and format the data",
+              "To deliver the data to the target system"
+            ],
+            "correct_index": 2
+          },
+          {
+            "question": "What is the primary challenge in designing a CDC Pipeline?",
+            "options": [
+              "Data latency and real-time processing capabilities",
+              "Data quality and consistency",
+              "Data security and compliance",
+              "Data integration and interoperability"
+            ],
+            "correct_index": 0
+          },
+          {
+            "question": "In a CDC Pipeline, what is the purpose of the 'sink' component?",
+            "options": [
+              "To capture and process changes to the data",
+              "To store and manage the data",
+              "To transform and format the data",
+              "To deliver the data to the target system"
+            ],
+            "correct_index": 3
+          },
+          {
+            "question": "Which of the following is a key consideration when selecting a CDC Pipeline technology?",
+            "options": [
+              "Scalability and performance",
+              "Data security and compliance",
+              "Data integration and interoperability",
+              "Cost and licensing"
+            ],
+            "correct_index": 0
+          }
+        ]
+      }
+    }
+  ]
+}

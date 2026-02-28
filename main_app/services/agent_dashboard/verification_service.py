@@ -1,0 +1,401 @@
+from __future__ import annotations
+
+from typing import Any
+
+from main_app.contracts import VerificationIssue, VerificationSummary
+from main_app.shared.slideshow.representation_normalizer import SUPPORTED_REPRESENTATIONS
+from main_app.models import AgentAssetResult
+from main_app.services.agent_dashboard.artifact_adapter import (
+    ARTIFACT_AUDIO_OVERVIEW_AUDIO,
+    ARTIFACT_AUDIO_OVERVIEW_PAYLOAD,
+    ARTIFACT_FLASHCARDS_CARDS,
+    ARTIFACT_MINDMAP_TREE,
+    ARTIFACT_QUIZ_DATA,
+    ARTIFACT_REPORT_TEXT,
+    ARTIFACT_SLIDESHOW_SLIDES,
+    ARTIFACT_TABLE_DATA,
+    ARTIFACT_TOPIC_TEXT,
+    ARTIFACT_VIDEO_AUDIO,
+    ARTIFACT_VIDEO_PAYLOAD,
+    legacy_result_to_artifact,
+)
+from main_app.services.agent_dashboard.error_codes import E_VERIFY_FAILED
+from main_app.services.agent_dashboard.error_codes import (
+    E_ARTIFACT_SCHEMA_MISMATCH,
+    E_VERIFY_PROFILE_UNKNOWN,
+)
+from main_app.services.agent_dashboard.tool_registry import AgentToolDefinition
+
+
+VERIFY_PROFILE_TEXT = "text_asset_verify"
+VERIFY_PROFILE_STRUCTURED = "structured_asset_verify"
+VERIFY_PROFILE_MEDIA = "media_asset_verify"
+
+
+def verify_asset_result(*, result: AgentAssetResult, tool: AgentToolDefinition) -> VerificationSummary:
+    profile, warning_issue = _verify_profile(tool)
+    schema_issues = _schema_gate(result=result, tool=tool)
+    if profile == VERIFY_PROFILE_TEXT:
+        summary = _verify_text_asset(result=result, tool=tool)
+    elif profile == VERIFY_PROFILE_MEDIA:
+        summary = _verify_media_asset(result=result, tool=tool)
+    else:
+        summary = _verify_structured_asset(result=result, tool=tool)
+    issues = summary.get("issues", []) if isinstance(summary.get("issues"), list) else []
+    checks = summary.get("checks_run", []) if isinstance(summary.get("checks_run"), list) else []
+    if warning_issue is not None:
+        issues.append(warning_issue)
+        checks.append("verify_profile_fallback")
+    if schema_issues:
+        issues.extend(schema_issues)
+        checks.append("artifact_schema_gate")
+    has_error = any(str(issue.get("severity", "")).lower() == "error" for issue in issues if isinstance(issue, dict))
+    summary["issues"] = issues
+    summary["checks_run"] = checks
+    summary["status"] = "failed" if has_error else "passed"
+    return summary
+
+
+def verification_passed(summary: VerificationSummary) -> bool:
+    return str(summary.get("status", "")).strip().lower() == "passed"
+
+
+def verification_error_message(summary: VerificationSummary) -> str:
+    issues = summary.get("issues", [])
+    if not isinstance(issues, list):
+        return "Verification failed."
+    errors = [issue for issue in issues if isinstance(issue, dict) and str(issue.get("severity", "")).lower() == "error"]
+    if not errors:
+        return "Verification failed."
+    messages = [str(issue.get("message", "")).strip() for issue in errors if str(issue.get("message", "")).strip()]
+    return "Verification failed: " + "; ".join(messages[:3]) if messages else "Verification failed."
+
+
+def _verify_text_asset(*, result: AgentAssetResult, tool: AgentToolDefinition) -> VerificationSummary:
+    checks_run: list[str] = []
+    issues: list[VerificationIssue] = []
+
+    section_key = _primary_key_for_intent(tool.intent)
+    primary_data = _section_data(result=result, key=section_key)
+    checks_run.append("primary_section_present")
+    if primary_data is None:
+        issues.append(_issue("Primary artifact section is missing.", f"sections.{section_key}"))
+        return _summary(checks_run=checks_run, issues=issues)
+
+    checks_run.append("primary_text_non_empty")
+    text = str(primary_data).strip()
+    if not text:
+        issues.append(_issue("Primary text content is empty.", f"sections.{section_key}.data"))
+    checks_run.append("primary_text_min_length")
+    if len(text) < 40:
+        issues.append(_issue("Primary text content is too short.", f"sections.{section_key}.data"))
+    return _summary(checks_run=checks_run, issues=issues)
+
+
+def _verify_structured_asset(*, result: AgentAssetResult, tool: AgentToolDefinition) -> VerificationSummary:
+    checks_run: list[str] = []
+    issues: list[VerificationIssue] = []
+    section_key = _primary_key_for_intent(tool.intent)
+    primary_data = _section_data(result=result, key=section_key)
+
+    checks_run.append("primary_section_present")
+    if primary_data is None:
+        issues.append(_issue("Primary artifact section is missing.", f"sections.{section_key}"))
+        return _summary(checks_run=checks_run, issues=issues)
+
+    intent = _normalize(tool.intent)
+    if intent == "mindmap":
+        checks_run.append("mindmap_root_name")
+        if not isinstance(primary_data, dict) or not str(primary_data.get("name", "")).strip():
+            issues.append(_issue("Mindmap root node must include `name`.", f"sections.{section_key}.data.name"))
+    elif intent == "flashcards":
+        checks_run.append("flashcards_cards_non_empty")
+        cards = primary_data.get("cards", []) if isinstance(primary_data, dict) else []
+        if not isinstance(cards, list) or not cards:
+            issues.append(_issue("Flashcards list is empty.", f"sections.{section_key}.data.cards"))
+        else:
+            first = cards[0] if isinstance(cards[0], dict) else {}
+            if not str(first.get("question", "")).strip() or not str(first.get("short_answer", "")).strip():
+                issues.append(_issue("Flashcards must contain `question` and `short_answer`.", f"sections.{section_key}.data.cards[0]"))
+    elif intent == "data table":
+        checks_run.append("table_columns_rows")
+        columns = primary_data.get("columns", []) if isinstance(primary_data, dict) else []
+        rows = primary_data.get("rows", []) if isinstance(primary_data, dict) else []
+        if not isinstance(columns, list) or not columns:
+            issues.append(_issue("Data table columns are missing.", f"sections.{section_key}.data.columns"))
+        if not isinstance(rows, list) or not rows:
+            issues.append(_issue("Data table rows are missing.", f"sections.{section_key}.data.rows"))
+    elif intent == "quiz":
+        checks_run.append("quiz_questions")
+        questions = primary_data.get("questions", []) if isinstance(primary_data, dict) else []
+        if not isinstance(questions, list) or not questions:
+            issues.append(_issue("Quiz questions are missing.", f"sections.{section_key}.data.questions"))
+        else:
+            first = questions[0] if isinstance(questions[0], dict) else {}
+            options = first.get("options", []) if isinstance(first, dict) else []
+            if not isinstance(options, list) or len(options) < 2:
+                issues.append(_issue("Each quiz question needs at least two options.", f"sections.{section_key}.data.questions[0].options"))
+    elif intent == "slideshow":
+        checks_run.append("slideshow_slides")
+        slides = primary_data.get("slides", []) if isinstance(primary_data, dict) else []
+        if not isinstance(slides, list) or not slides:
+            issues.append(_issue("Slideshow slides are missing.", f"sections.{section_key}.data.slides"))
+        else:
+            checks_run.append("slideshow_representation_contract")
+            allowed = set(SUPPORTED_REPRESENTATIONS)
+            for index, slide in enumerate(slides):
+                if not isinstance(slide, dict):
+                    issues.append(_issue("Each slide must be an object.", f"sections.{section_key}.data.slides[{index}]"))
+                    continue
+                representation = " ".join(str(slide.get("representation", "bullet")).split()).strip().lower()
+                if representation not in allowed:
+                    issues.append(
+                        _issue(
+                            f"Slide representation `{representation}` is not allowed.",
+                            f"sections.{section_key}.data.slides[{index}].representation",
+                        )
+                    )
+                    continue
+                bullets = slide.get("bullets", [])
+                if not isinstance(bullets, list) or not any(str(item).strip() for item in bullets):
+                    issues.append(
+                        _issue(
+                            "Each slide must include non-empty bullets after normalization.",
+                            f"sections.{section_key}.data.slides[{index}].bullets",
+                        )
+                    )
+                layout_payload = slide.get("layout_payload", {})
+                if not isinstance(layout_payload, dict):
+                    issues.append(
+                        _issue(
+                            "Slide layout_payload must be an object.",
+                            f"sections.{section_key}.data.slides[{index}].layout_payload",
+                        )
+                    )
+                    continue
+                _validate_slide_layout_payload(
+                    representation=representation,
+                    layout_payload=layout_payload,
+                    issues=issues,
+                    path_prefix=f"sections.{section_key}.data.slides[{index}].layout_payload",
+                )
+    return _summary(checks_run=checks_run, issues=issues)
+
+
+def _verify_media_asset(*, result: AgentAssetResult, tool: AgentToolDefinition) -> VerificationSummary:
+    checks_run: list[str] = []
+    issues: list[VerificationIssue] = []
+    intent = _normalize(tool.intent)
+
+    if intent == "video":
+        payload = _section_data(result=result, key=ARTIFACT_VIDEO_PAYLOAD)
+        checks_run.append("video_payload_present")
+        if payload is None:
+            issues.append(_issue("Video payload section is missing.", f"sections.{ARTIFACT_VIDEO_PAYLOAD}"))
+        else:
+            slides = payload.get("slides", []) if isinstance(payload, dict) else []
+            scripts = payload.get("slide_scripts", []) if isinstance(payload, dict) else []
+            checks_run.append("video_slides_scripts_present")
+            if not isinstance(slides, list) or not slides:
+                issues.append(_issue("Video slides are missing.", f"sections.{ARTIFACT_VIDEO_PAYLOAD}.data.slides"))
+            if not isinstance(scripts, list) or not scripts:
+                issues.append(_issue("Video slide scripts are missing.", f"sections.{ARTIFACT_VIDEO_PAYLOAD}.data.slide_scripts"))
+        checks_run.append("video_audio_artifact")
+        audio_data = _section_data(result=result, key=ARTIFACT_VIDEO_AUDIO)
+        if audio_data is None and result.audio_bytes is None and not result.audio_error:
+            issues.append(_issue("Video audio output is missing.", f"sections.{ARTIFACT_VIDEO_AUDIO}"))
+
+    if intent == "audio_overview":
+        payload = _section_data(result=result, key=ARTIFACT_AUDIO_OVERVIEW_PAYLOAD)
+        checks_run.append("audio_overview_payload_present")
+        if payload is None:
+            issues.append(_issue("Audio overview payload section is missing.", f"sections.{ARTIFACT_AUDIO_OVERVIEW_PAYLOAD}"))
+        else:
+            dialogue = payload.get("dialogue", []) if isinstance(payload, dict) else []
+            if not isinstance(dialogue, list) or not dialogue:
+                issues.append(_issue("Audio overview dialogue is missing.", f"sections.{ARTIFACT_AUDIO_OVERVIEW_PAYLOAD}.data.dialogue"))
+        checks_run.append("audio_overview_audio_artifact")
+        audio_data = _section_data(result=result, key=ARTIFACT_AUDIO_OVERVIEW_AUDIO)
+        if audio_data is None and result.audio_bytes is None and not result.audio_error:
+            issues.append(_issue("Audio overview MP3 output is missing.", f"sections.{ARTIFACT_AUDIO_OVERVIEW_AUDIO}"))
+
+    return _summary(checks_run=checks_run, issues=issues)
+
+
+def _summary(*, checks_run: list[str], issues: list[VerificationIssue]) -> VerificationSummary:
+    has_error = any(str(issue.get("severity", "")).lower() == "error" for issue in issues)
+    return {
+        "status": "failed" if has_error else "passed",
+        "issues": issues,
+        "checks_run": checks_run,
+    }
+
+
+def _issue(message: str, path: str) -> VerificationIssue:
+    return {
+        "code": E_VERIFY_FAILED,
+        "severity": "error",
+        "message": message,
+        "path": path,
+    }
+
+
+def _warning_issue(message: str, path: str) -> VerificationIssue:
+    return {
+        "code": E_VERIFY_PROFILE_UNKNOWN,
+        "severity": "warning",
+        "message": message,
+        "path": path,
+    }
+
+
+def _verify_profile(tool: AgentToolDefinition) -> tuple[str, VerificationIssue | None]:
+    spec = tool.execution_spec if isinstance(tool.execution_spec, dict) else {}
+    profile = " ".join(str(spec.get("verify_profile", "")).split()).strip().lower()
+    if profile in {VERIFY_PROFILE_TEXT, VERIFY_PROFILE_STRUCTURED, VERIFY_PROFILE_MEDIA}:
+        return profile, None
+    intent = _normalize(tool.intent)
+    if intent in {"topic", "report"}:
+        inferred = VERIFY_PROFILE_TEXT
+    elif intent in {"video", "audio_overview"}:
+        inferred = VERIFY_PROFILE_MEDIA
+    else:
+        inferred = VERIFY_PROFILE_STRUCTURED
+    if profile:
+        return inferred, _warning_issue(
+            f"Unknown verify profile `{profile}`. Fallback `{inferred}` was applied.",
+            "execution_spec.verify_profile",
+        )
+    return inferred, None
+
+
+def _section_data(*, result: AgentAssetResult, key: str) -> Any:
+    artifact = result.artifact if isinstance(result.artifact, dict) else legacy_result_to_artifact(result)
+    sections = artifact.get("sections", [])
+    if not isinstance(sections, list):
+        return None
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        section_key = " ".join(str(section.get("key", "")).split()).strip()
+        if section_key == key:
+            return section.get("data")
+    return None
+
+
+def _primary_key_for_intent(intent: str) -> str:
+    normalized = _normalize(intent)
+    mapping = {
+        "topic": ARTIFACT_TOPIC_TEXT,
+        "mindmap": ARTIFACT_MINDMAP_TREE,
+        "flashcards": ARTIFACT_FLASHCARDS_CARDS,
+        "data table": ARTIFACT_TABLE_DATA,
+        "quiz": ARTIFACT_QUIZ_DATA,
+        "slideshow": ARTIFACT_SLIDESHOW_SLIDES,
+        "video": ARTIFACT_VIDEO_PAYLOAD,
+        "audio_overview": ARTIFACT_AUDIO_OVERVIEW_PAYLOAD,
+        "report": ARTIFACT_REPORT_TEXT,
+    }
+    return mapping.get(normalized, f"artifact.{normalized}.primary")
+
+
+def _normalize(value: str) -> str:
+    return " ".join(str(value).split()).strip().lower()
+
+
+def _validate_slide_layout_payload(
+    *,
+    representation: str,
+    layout_payload: dict[str, Any],
+    issues: list[VerificationIssue],
+    path_prefix: str,
+) -> None:
+    if representation == "bullet":
+        items = layout_payload.get("items", [])
+        if not isinstance(items, list):
+            issues.append(_issue("Bullet layout requires `items` list.", f"{path_prefix}.items"))
+        return
+    if representation == "two_column":
+        _require_text_field(layout_payload, "left_title", issues, path_prefix)
+        _require_text_field(layout_payload, "right_title", issues, path_prefix)
+        _require_list_field(layout_payload, "left_items", issues, path_prefix)
+        _require_list_field(layout_payload, "right_items", issues, path_prefix)
+        return
+    if representation == "timeline":
+        events = layout_payload.get("events", [])
+        if not isinstance(events, list) or not events:
+            issues.append(_issue("Timeline layout requires non-empty `events` list.", f"{path_prefix}.events"))
+        return
+    if representation == "comparison":
+        _require_text_field(layout_payload, "left_title", issues, path_prefix)
+        _require_text_field(layout_payload, "right_title", issues, path_prefix)
+        _require_list_field(layout_payload, "left_points", issues, path_prefix)
+        _require_list_field(layout_payload, "right_points", issues, path_prefix)
+        return
+    if representation == "process_flow":
+        steps = layout_payload.get("steps", [])
+        if not isinstance(steps, list) or not steps:
+            issues.append(_issue("Process flow layout requires non-empty `steps` list.", f"{path_prefix}.steps"))
+        return
+    if representation == "metric_cards":
+        cards = layout_payload.get("cards", [])
+        if not isinstance(cards, list) or not cards:
+            issues.append(_issue("Metric cards layout requires non-empty `cards` list.", f"{path_prefix}.cards"))
+
+
+def _require_text_field(
+    payload: dict[str, Any],
+    key: str,
+    issues: list[VerificationIssue],
+    path_prefix: str,
+) -> None:
+    value = payload.get(key)
+    if not str(value or "").strip():
+        issues.append(_issue(f"Missing `{key}` text value.", f"{path_prefix}.{key}"))
+
+
+def _require_list_field(
+    payload: dict[str, Any],
+    key: str,
+    issues: list[VerificationIssue],
+    path_prefix: str,
+) -> None:
+    value = payload.get(key)
+    if not isinstance(value, list) or not value:
+        issues.append(_issue(f"Missing non-empty `{key}` list.", f"{path_prefix}.{key}"))
+
+
+def _schema_gate(*, result: AgentAssetResult, tool: AgentToolDefinition) -> list[VerificationIssue]:
+    intent = _normalize(tool.intent)
+    section_key = _primary_key_for_intent(intent)
+    primary_data = _section_data(result=result, key=section_key)
+    issues: list[VerificationIssue] = []
+    if primary_data is None:
+        issues.append(
+            {
+                "code": E_ARTIFACT_SCHEMA_MISMATCH,
+                "severity": "error",
+                "message": "Primary artifact data is missing for schema validation.",
+                "path": f"sections.{section_key}",
+            }
+        )
+        return issues
+    if intent in {"mindmap", "flashcards", "data table", "quiz", "slideshow", "video", "audio_overview"} and not isinstance(primary_data, dict):
+        issues.append(
+            {
+                "code": E_ARTIFACT_SCHEMA_MISMATCH,
+                "severity": "error",
+                "message": "Primary artifact data must be an object for this intent.",
+                "path": f"sections.{section_key}.data",
+            }
+        )
+    if intent in {"topic", "report"} and not isinstance(primary_data, str):
+        issues.append(
+            {
+                "code": E_ARTIFACT_SCHEMA_MISMATCH,
+                "severity": "error",
+                "message": "Primary artifact data must be text for this intent.",
+                "path": f"sections.{section_key}.data",
+            }
+        )
+    return issues

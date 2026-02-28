@@ -1,0 +1,7 @@
+{
+  "id": "audio_overview.v1",
+  "intent": "audio_overview",
+  "version": "v1",
+  "required_section_key": "artifact.audio_overview.payload",
+  "required_data_type": "object"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "topic.v1",
+  "intent": "topic",
+  "version": "v1",
+  "required_section_key": "artifact.topic.text",
+  "required_data_type": "string"
+}

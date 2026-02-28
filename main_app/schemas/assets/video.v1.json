@@ -1,0 +1,7 @@
+{
+  "id": "video.v1",
+  "intent": "video",
+  "version": "v1",
+  "required_section_key": "artifact.video.payload",
+  "required_data_type": "object"
+}

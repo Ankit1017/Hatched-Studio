@@ -1,0 +1,7 @@
+{
+  "id": "quiz.v1",
+  "intent": "quiz",
+  "version": "v1",
+  "required_section_key": "artifact.quiz.data",
+  "required_data_type": "object"
+}

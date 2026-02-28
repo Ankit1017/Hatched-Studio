@@ -1,0 +1,7 @@
+{
+  "id": "data_table.v1",
+  "intent": "data table",
+  "version": "v1",
+  "required_section_key": "artifact.table.data",
+  "required_data_type": "object"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "report.v1",
+  "intent": "report",
+  "version": "v1",
+  "required_section_key": "artifact.report.text",
+  "required_data_type": "string"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "slideshow.v1",
+  "intent": "slideshow",
+  "version": "v1",
+  "required_section_key": "artifact.slideshow.slides",
+  "required_data_type": "object"
+}

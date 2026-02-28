@@ -1,0 +1,209 @@
+{
+  "topic": "Segment Trees",
+  "slides": [
+    {
+      "title": "Segment Trees",
+      "section": "Introduction",
+      "bullets": [
+        "Presentation roadmap with 5 core sections",
+        "Progressive coverage from fundamentals to practical understanding",
+        "Focus on concepts, trade-offs, and real-world applicability"
+      ],
+      "speaker_notes": "Use this slide to introduce scope and flow."
+    },
+    {
+      "title": "What are Segment Trees?",
+      "bullets": [
+        "A binary indexed tree (BIT) data structure used for storing information about segments or intervals of a data set.",
+        "Allows for efficient querying and updating of data within specific ranges.",
+        "Commonly used in applications requiring range-based queries, such as data compression, image processing, and scientific simulations."
+      ],
+      "speaker_notes": "Make sure to explain the concept of binary indexed trees and how segment trees build upon this concept.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "Applications of Segment Trees",
+      "bullets": [
+        "Range sum queries: Find the sum of elements within a specific range.",
+        "Range minimum/maximum queries: Find the minimum or maximum element within a specific range.",
+        "Range update queries: Update the value of elements within a specific range.",
+        "Data compression: Segment trees can be used to compress data by representing ranges of identical values."
+      ],
+      "speaker_notes": "Highlight the importance of segment trees in various fields, such as data analysis and scientific simulations.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "Segment Trees in Computer Science",
+      "bullets": [
+        "Used in various algorithms, including range-based queries and data compression.",
+        "Can be applied to various data structures, such as arrays and linked lists.",
+        "Has applications in fields like data analysis, scientific simulations, and image processing.",
+        "Segment trees provide an efficient way to store and query data within specific ranges."
+      ],
+      "speaker_notes": "Emphasize the significance of segment trees in computer science and their impact on various fields.",
+      "code_snippet": "class SegmentTree:\n  def __init__(self, data):\n    self.data = data\n    self.tree = [0] * (len(data) * 4)\n\n  def update(self, index, value):\n    self._update(0, 0, len(self.data) - 1, index, value)\n\n  def _update(self, node, start, end, index, value):\n    if start == end:\n      self.tree[node] = value\n    else:\n      mid = (start + end) // 2\n      if index <= mid:\n        self._update(2 * node + 1, start, mid, index, value)\n      else:\n        self._update(2 * node + 2, mid + 1, end, index, value)\n      self.tree[node] = self.tree[2 * node + 1] + self.tree[2 * node + 2]\n\n  def query(self, start, end):\n    return self._query(0, 0, len(self.data) - 1, start, end)\n\n  def _query(self, node, start, end, query_start, query_end):\n    if query_start > end or query_end < start:\n      return 0\n    if query_start <= start and query_end >= end:\n      return self.tree[node]\n    mid = (start + end) // 2\n    return (self._query(2 * node + 1, start, mid, query_start, query_end) +\n            self._query(2 * node + 2, mid + 1, end, query_start, query_end))",
+      "code_language": "python",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "What is a Segment Tree?",
+      "bullets": [
+        "A data structure used for storing information about intervals, or segments, of a dataset.",
+        "It allows for efficient range queries and updates.",
+        "Segment trees are a type of binary indexed tree."
+      ],
+      "speaker_notes": "In this context, an interval is a range of values within the dataset.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "Components of a Segment Tree",
+      "bullets": [
+        "Each node represents a segment of the dataset.",
+        "Each node stores the minimum/maximum value of the segment it represents.",
+        "Leaf nodes represent single elements of the dataset.",
+        "Internal nodes represent a combination of child segments."
+      ],
+      "speaker_notes": "The choice of minimum or maximum value depends on the specific use case.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "How a Segment Tree Works",
+      "bullets": [
+        "When a query or update is made, it starts at the root node.",
+        "The tree is traversed based on the query or update operation.",
+        "Each node's value is combined with its child nodes' values to compute the result.",
+        "This process continues until the leaf nodes are reached."
+      ],
+      "speaker_notes": "The specific combination of values depends on the type of query or update.",
+      "code_snippet": "class SegmentTreeNode:\n  def __init__(self, value):\n    self.value = value\n    self.left = None\n    self.right = None",
+      "code_language": "Python",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "Introduction to Segment Tree Construction",
+      "bullets": [
+        "A segment tree is a binary tree data structure where each node represents a segment of the array.",
+        "The segment tree is constructed by recursively dividing the array into smaller segments.",
+        "Each node in the segment tree contains the minimum or maximum value of the corresponding segment."
+      ],
+      "speaker_notes": "Review the concept of segment trees and their importance in range queries.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Constructing a Segment Tree"
+    },
+    {
+      "title": "Segment Tree Construction Algorithm",
+      "bullets": [
+        "Create a node for the segment tree with the following properties: left child, right child, and value.",
+        "The value of the node is the minimum or maximum value of the corresponding segment.",
+        "The left child of the node represents the left half of the segment, and the right child represents the right half.",
+        "If the segment has only one element, the node's value is the element itself."
+      ],
+      "speaker_notes": "Explain the recursive approach to constructing the segment tree.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Constructing a Segment Tree"
+    },
+    {
+      "title": "Example Code: Constructing a Segment Tree",
+      "bullets": [
+        "The following Python code demonstrates the construction of a segment tree from a given array.",
+        "It uses a recursive approach to divide the array into smaller segments and create nodes for the segment tree."
+      ],
+      "speaker_notes": "Walk through the code and explain each step of the construction process.",
+      "code_snippet": "",
+      "code_language": "python",
+      "section": "Constructing a Segment Tree"
+    },
+    {
+      "title": "Range Queries in Segment Trees",
+      "bullets": [
+        "A range query in a segment tree involves finding the sum of elements in a specific range of the array.",
+        "This is achieved by traversing the segment tree from the root node down to the leaf nodes.",
+        "The root node represents the entire array, and each child node represents a subset of the array."
+      ],
+      "speaker_notes": "Emphasize the importance of range queries in segment trees.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Range Queries and Updates in Segment Trees"
+    },
+    {
+      "title": "Range Query Algorithm",
+      "bullets": [
+        "Start at the root node and compare the query range with the node's range.",
+        "If the query range overlaps with the node's range, recursively query the left and right child nodes.",
+        "If the query range is contained within the node's range, return the node's value."
+      ],
+      "speaker_notes": "Highlight the recursive nature of the range query algorithm.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Range Queries and Updates in Segment Trees"
+    },
+    {
+      "title": "Updating a Range in a Segment Tree",
+      "bullets": [
+        "To update a range in a segment tree, first update the leaf nodes that correspond to the updated range.",
+        "Then, recursively update the parent nodes until the root node is reached.",
+        "This ensures that the segment tree remains balanced and efficient for future queries."
+      ],
+      "speaker_notes": "Discuss the importance of maintaining a balanced segment tree.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Range Queries and Updates in Segment Trees"
+    },
+    {
+      "title": "Example Use Cases of Segment Trees",
+      "bullets": [
+        "Range Sum Query: Find the sum of all elements in a given range in an array.",
+        "Range Minimum/Maximum Query: Find the minimum/maximum element in a given range in an array.",
+        "Update Range: Update the value of all elements in a given range in an array."
+      ],
+      "speaker_notes": "Segment trees can be used in various applications such as data compression, machine learning, and scientific simulations.",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Example Use Cases and Code Implementation"
+    },
+    {
+      "title": "Range Sum Query with Segment Trees",
+      "bullets": [
+        "Create a segment tree with n nodes, where each node represents an interval [l, r].",
+        "For each node, store the sum of all elements in the interval [l, r].",
+        "To query the sum of elements in a range [a, b], traverse the segment tree from the root node to the leaf node that covers the range [a, b]."
+      ],
+      "speaker_notes": "The time complexity of range sum query using segment trees is O(log n).",
+      "code_snippet": "import numpy as np\n\nclass SegmentTree:\n    def __init__(self, arr):\n        self.n = len(arr)\n        self.tree = [0] * (4 * self.n)\n        self.build_tree(arr, 0, 0, self.n - 1)\n\n    def build_tree(self, arr, node, start, end):\n        if start == end:\n            self.tree[node] = arr[start]\n        else:\n            mid = (start + end) // 2\n            self.build_tree(arr, 2 * node + 1, start, mid)\n            self.build_tree(arr, 2 * node + 2, mid + 1, end)\n            self.tree[node] = self.tree[2 * node + 1] + self.tree[2 * node + 2]\n\n    def query(self, a, b):\n        return self._query(0, 0, self.n - 1, a, b)\n\n    def _query(self, node, start, end, a, b):\n        if a > end or b < start:\n            return 0\n        if a <= start and b >= end:\n            return self.tree[node]\n        mid = (start + end) // 2\n        return self._query(2 * node + 1, start, mid, a, b) + self._query(2 * node + 2, mid + 1, end, a, b)\n\narr = np.array([1, 3, 5, 7, 9])\nsegment_tree = SegmentTree(arr)\nprint(segment_tree.query(1, 3))",
+      "code_language": "python",
+      "section": "Example Use Cases and Code Implementation"
+    },
+    {
+      "title": "Range Minimum/Maximum Query with Segment Trees",
+      "bullets": [
+        "Create a segment tree with n nodes, where each node represents an interval [l, r].",
+        "For each node, store the minimum/maximum element in the interval [l, r].",
+        "To query the minimum/maximum element in a range [a, b], traverse the segment tree from the root node to the leaf node that covers the range [a, b]."
+      ],
+      "speaker_notes": "The time complexity of range minimum/maximum query using segment trees is O(log n).",
+      "code_snippet": "",
+      "code_language": "",
+      "section": "Example Use Cases and Code Implementation"
+    },
+    {
+      "title": "Summary and Next Steps",
+      "section": "Conclusion",
+      "bullets": [
+        "Recap of 5 major areas in Segment Trees",
+        "Key takeaways to retain for implementation and decision-making",
+        "Suggested path for deeper study and practical application"
+      ],
+      "speaker_notes": "Close with actionable next steps and Q&A transition."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "mindmap.v1",
+  "intent": "mindmap",
+  "version": "v1",
+  "required_section_key": "artifact.mindmap.tree",
+  "required_data_type": "object"
+}

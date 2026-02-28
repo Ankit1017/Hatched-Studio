@@ -1,0 +1,180 @@
+{
+  "topic": "Segment Trees",
+  "slides": [
+    {
+      "title": "Segment Trees",
+      "section": "Introduction",
+      "bullets": [
+        "Presentation roadmap with 5 core sections",
+        "Progressive coverage from fundamentals to practical understanding",
+        "Focus on concepts, trade-offs, and real-world applicability"
+      ],
+      "speaker_notes": "Use this slide to introduce scope and flow."
+    },
+    {
+      "title": "What is a Segment Tree?",
+      "bullets": [
+        "A Segment Tree is a binary tree data structure for storing information about intervals, or segments.",
+        "It is a tree where each node represents a range of values.",
+        "Each node contains the maximum or minimum value in its range."
+      ],
+      "speaker_notes": "A Segment Tree is a crucial data structure in computer science, especially in competitive programming.",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "Applications of Segment Trees",
+      "bullets": [
+        "Range queries: Find the maximum or minimum value in a given range.",
+        "Interval updates: Update the value of a range.",
+        "Dynamic segment tree: Handle insertions and deletions of segments."
+      ],
+      "speaker_notes": "Segment Trees are used in various applications, including data analysis, game development, and scientific simulations.",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "Importance of Segment Trees in Computer Science",
+      "bullets": [
+        "Efficient query and update operations.",
+        "Support for dynamic data structures.",
+        "Applicable to various problems, including range queries and interval updates."
+      ],
+      "speaker_notes": "Understanding Segment Trees is essential for solving complex problems in computer science and competitive programming.",
+      "section": "Introduction to Segment Trees"
+    },
+    {
+      "title": "Segment Tree Data Structure Overview",
+      "bullets": [
+        "A binary tree where each node represents a segment of an array.",
+        "Each node contains a value (sum, min, max, etc.) and two child nodes.",
+        "Segment trees are used for range queries and updates in arrays."
+      ],
+      "speaker_notes": "Introduce the concept of segment trees and their importance in range queries and updates.",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "Segment Tree Operations",
+      "bullets": [
+        "Range Sum Query: Find the sum of elements in a given range.",
+        "Range Update: Update the value of elements in a given range.",
+        "Point Query: Find the value of an element at a specific index.",
+        "Point Update: Update the value of an element at a specific index."
+      ],
+      "speaker_notes": "Explain the different operations that can be performed on a segment tree.",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "Segment Tree Properties",
+      "bullets": [
+        "Each node represents a segment of the array.",
+        "The root node represents the entire array.",
+        "Each node's value is the result of a function applied to its child nodes' values.",
+        "The height of the tree is log(n), where n is the size of the array."
+      ],
+      "speaker_notes": "Discuss the properties of segment trees that make them efficient for range queries and updates.",
+      "section": "Segment Tree Data Structure"
+    },
+    {
+      "title": "Range Queries in Segment Trees",
+      "bullets": [
+        "To perform a range query, we need to find the minimum/maximum value in a given range [l, r] in the segment tree.",
+        "We start at the root node and recursively traverse down the tree, updating the range as we go.",
+        "We use the following formula to calculate the range: [l, r] = [l, mid] + [mid + 1, r]"
+      ],
+      "speaker_notes": "Presenter can explain the concept of range queries in segment trees and how it's used in the algorithm.",
+      "section": "Range Queries and Updates"
+    },
+    {
+      "title": "Range Query Algorithm",
+      "bullets": [
+        "Function `query` takes three parameters: `node`, `l`, and `r`, representing the current node and the range [l, r].",
+        "Base case: if the range [l, r] is empty, return infinity or negative infinity.",
+        "If the range [l, r] is entirely within the range covered by the current node, return the value stored in the node."
+      ],
+      "speaker_notes": "Presenter can explain the base case and the recursive case of the range query algorithm.",
+      "section": "Range Queries and Updates"
+    },
+    {
+      "title": "Range Update in Segment Trees",
+      "bullets": [
+        "To update a range [l, r] in the segment tree, we need to update the values in all nodes that intersect with the range.",
+        "We use the following formula to update the range: [l, r] = [l, mid] + [mid + 1, r]",
+        "We update the values in the nodes by taking the minimum/maximum of the old value and the new value."
+      ],
+      "speaker_notes": "Presenter can explain the concept of range updates in segment trees and how it's used in the algorithm.",
+      "section": "Range Queries and Updates"
+    },
+    {
+      "title": "Step 1: Initialize Segment Tree",
+      "bullets": [
+        "Create a binary tree with 4n nodes, where n is the number of elements in the array",
+        "Each node represents a range of elements in the array",
+        "Leaf nodes represent single elements, while internal nodes represent ranges",
+        "Assign a value to each node, typically the sum of the values in its range"
+      ],
+      "speaker_notes": "In this step, we create a segment tree data structure to store the values of the input array.",
+      "section": "Segment Tree Implementation in Code"
+    },
+    {
+      "title": "Step 2: Implement Range Sum Query",
+      "bullets": [
+        "Define a function to calculate the sum of a range of elements",
+        "The function should traverse the segment tree from the root node to the leaf node",
+        "At each node, add the value of the node to the sum if the range of the node overlaps with the query range",
+        "Return the final sum as the result of the query"
+      ],
+      "speaker_notes": "In this step, we implement the range sum query functionality using the segment tree data structure.",
+      "section": "Segment Tree Implementation in Code"
+    },
+    {
+      "title": "Example Use Case: Updating a Range of Elements",
+      "bullets": [
+        "Suppose we have an array [1, 2, 3, 4, 5] and we want to update the sum of the range [2, 4] by adding 10",
+        "We would call the update function on the segment tree, passing in the range [2, 4] and the value 10",
+        "The segment tree would be updated accordingly, and the range sum query function would return the correct sum",
+        "This demonstrates the flexibility and efficiency of the segment tree data structure"
+      ],
+      "speaker_notes": "In this example, we demonstrate how to update a range of elements in the segment tree and verify the correctness of the range sum query function.",
+      "section": "Segment Tree Implementation in Code"
+    },
+    {
+      "title": "Time Complexity of Segment Trees",
+      "bullets": [
+        "Build operation: O(n log n) due to recursive tree construction",
+        "Query operation: O(log n) as we traverse the tree from root to leaf",
+        "Update operation: O(log n) as we update the tree from root to leaf"
+      ],
+      "speaker_notes": "Note that n is the number of elements in the array",
+      "section": "Time Complexity and Space Efficiency"
+    },
+    {
+      "title": "Space Efficiency of Segment Trees",
+      "bullets": [
+        "Segment tree requires O(n) space to store the tree structure",
+        "Additional O(n) space is required for the array of size n",
+        "Total space complexity is O(2n) = O(n)"
+      ],
+      "speaker_notes": "Note that this is a significant improvement over the space complexity of naive approaches",
+      "section": "Time Complexity and Space Efficiency"
+    },
+    {
+      "title": "Comparison with Other Data Structures",
+      "bullets": [
+        "Segment trees outperform prefix sums and suffix trees in terms of query and update operations",
+        "Segment trees have better space efficiency than prefix sums and suffix trees",
+        "However, segment trees have higher build time complexity compared to prefix sums and suffix trees"
+      ],
+      "speaker_notes": "Note that the choice of data structure depends on the specific use case and requirements",
+      "section": "Time Complexity and Space Efficiency"
+    },
+    {
+      "title": "Summary and Next Steps",
+      "section": "Conclusion",
+      "bullets": [
+        "Recap of 5 major areas in Segment Trees",
+        "Key takeaways to retain for implementation and decision-making",
+        "Suggested path for deeper study and practical application"
+      ],
+      "speaker_notes": "Close with actionable next steps and Q&A transition."
+    }
+  ]
+}

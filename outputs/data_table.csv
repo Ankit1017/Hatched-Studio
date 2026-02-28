@@ -1,0 +1,13 @@
+Subtype,Attribute A,Attribute B,Attribute C,Attribute D,Attribute E,Attribute F,Attribute G
+Rule-based Agentic System,Fixed set of rules,Limited reasoning capabilities,Static knowledge base,High performance in specific tasks,Low adaptability,Low complexity,Low scalability
+Personalized Rule-based Agentic System,Rule set tailored to individual,Improved reasoning capabilities,Dynamic knowledge base,High performance in specific tasks,Moderate adaptability,Moderate complexity,Moderate scalability
+Artificial Neural Network (ANN) Agentic System,Learning from data,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Reinforcement Learning Agentic System,Learning from rewards,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Fuzzy Logic Agentic System,Rule-based reasoning with fuzzy logic,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in uncertain environments,Moderate adaptability,Moderate complexity,Low scalability
+Evolutionary Agentic System,Evolutionary algorithms for optimization,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Swarm Intelligence Agentic System,Distributed decision-making,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Neuro-fuzzy Agentic System,Hybrid of neural networks and fuzzy logic,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Bayesian Agentic System,Probabilistic reasoning,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Decision Tree Agentic System,Hierarchical decision-making,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Artificial Immune System Agentic System,Immune system-inspired learning,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability
+Swarm Intelligence Agentic System,Swarm behavior-inspired decision-making,Adaptive reasoning capabilities,Dynamic knowledge base,High performance in dynamic environments,High adaptability,High complexity,Low scalability

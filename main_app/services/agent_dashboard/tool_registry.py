@@ -1,0 +1,295 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Iterable
+
+from main_app.contracts import ArtifactSchemaRef, ToolExecutionSpec, ToolPluginSpec
+from main_app.services.agent_dashboard.plugin_sdk import (
+    normalize_tool_plugin_spec,
+    validate_tool_plugin_spec,
+)
+from main_app.services.agent_dashboard.artifact_adapter import (
+    default_optional_required_artifact_keys_by_intent,
+    default_produced_artifact_keys_by_intent,
+    default_required_artifact_keys_by_intent,
+)
+from main_app.services.agent_dashboard.intent_catalog import ASSET_INTENTS, ASSET_TAB_TITLE_BY_INTENT, normalize_intent
+
+
+@dataclass(frozen=True)
+class AgentToolDefinition:
+    key: str
+    intent: str
+    title: str
+    description: str
+    execution_spec: ToolExecutionSpec = field(default_factory=dict)
+    capabilities: list[str] = field(default_factory=list)
+    schema_ref: ArtifactSchemaRef = field(default_factory=dict)
+
+
+class AgentToolRegistry:
+    def __init__(self, tools: Iterable[AgentToolDefinition] | None = None) -> None:
+        self._tools_by_key: dict[str, AgentToolDefinition] = {}
+        self._tool_key_by_intent: dict[str, str] = {}
+        self._plugin_specs_by_key: dict[str, ToolPluginSpec] = {}
+        for tool in tools or []:
+            self.register(tool)
+
+    def register(self, tool: AgentToolDefinition) -> None:
+        plugin_spec: ToolPluginSpec = {
+            "plugin_key": tool.key,
+            "intent": tool.intent,
+            "title": tool.title,
+            "description": tool.description,
+            "capabilities": [str(item).strip() for item in tool.capabilities if str(item).strip()],
+            "execution_spec": tool.execution_spec if isinstance(tool.execution_spec, dict) else {},
+            "schema_ref": tool.schema_ref if isinstance(tool.schema_ref, dict) else {},
+        }
+        self.register_plugin_spec(plugin_spec)
+
+    def register_plugin_spec(self, plugin_spec: ToolPluginSpec) -> None:
+        normalized_plugin_spec = normalize_tool_plugin_spec(plugin_spec)
+        validation = validate_tool_plugin_spec(normalized_plugin_spec)
+        if not validation.ok:
+            return
+        key_raw = str(normalized_plugin_spec.get("plugin_key", ""))
+        intent_raw = str(normalized_plugin_spec.get("intent", ""))
+        intent = normalize_intent(intent_raw)
+        key = normalize_intent(key_raw).replace(" ", "_")
+        if not key or not intent:
+            return
+        execution_spec = normalized_plugin_spec.get("execution_spec") if isinstance(normalized_plugin_spec.get("execution_spec"), dict) else {}
+        capabilities = normalized_plugin_spec.get("capabilities") if isinstance(normalized_plugin_spec.get("capabilities"), list) else []
+        schema_ref = normalized_plugin_spec.get("schema_ref") if isinstance(normalized_plugin_spec.get("schema_ref"), dict) else {}
+        normalized_tool = AgentToolDefinition(
+            key=key,
+            intent=intent,
+            title=" ".join(str(normalized_plugin_spec.get("title", intent.title())).split()).strip() or intent.title(),
+            description=" ".join(str(normalized_plugin_spec.get("description", "")).split()).strip(),
+            execution_spec=self._normalize_execution_spec(execution_spec=execution_spec, normalized_key=key, normalized_intent=intent),
+            capabilities=[str(item).strip() for item in capabilities if str(item).strip()],
+            schema_ref=self._normalize_schema_ref(intent=intent, schema_ref=schema_ref),
+        )
+        self._tools_by_key[key] = normalized_tool
+        self._tool_key_by_intent[intent] = key
+        self._plugin_specs_by_key[key] = {
+            "plugin_key": key,
+            "intent": intent,
+            "capabilities": list(normalized_tool.capabilities),
+            "execution_spec": normalized_tool.execution_spec,
+            "schema_ref": normalized_tool.schema_ref,
+        }
+
+    def list_tools(self) -> list[AgentToolDefinition]:
+        ordered_keys = [self._tool_key_by_intent[intent] for intent in ASSET_INTENTS if intent in self._tool_key_by_intent]
+        ordered_keys.extend(sorted(key for key in self._tools_by_key if key not in set(ordered_keys)))
+        return [self._tools_by_key[key] for key in ordered_keys]
+
+    def list_plugin_specs(self) -> list[ToolPluginSpec]:
+        return [self._plugin_specs_by_key[key] for key in sorted(self._plugin_specs_by_key.keys())]
+
+    def get_by_key(self, key: str) -> AgentToolDefinition | None:
+        normalized = normalize_intent(key).replace(" ", "_")
+        return self._tools_by_key.get(normalized)
+
+    def get_by_intent(self, intent: str) -> AgentToolDefinition | None:
+        normalized_intent = normalize_intent(intent)
+        tool_key = self._tool_key_by_intent.get(normalized_intent)
+        if not tool_key:
+            return None
+        return self._tools_by_key.get(tool_key)
+
+    def resolve_tools_for_intents(
+        self,
+        intents: list[str] | tuple[str, ...],
+    ) -> tuple[list[AgentToolDefinition], list[str]]:
+        resolved: list[AgentToolDefinition] = []
+        unresolved: list[str] = []
+        seen_intents: set[str] = set()
+
+        for raw_intent in intents:
+            intent = normalize_intent(raw_intent)
+            if not intent or intent in seen_intents:
+                continue
+            seen_intents.add(intent)
+            tool = self.get_by_intent(intent)
+            if tool is None:
+                unresolved.append(intent)
+                continue
+            resolved.append(tool)
+        return resolved, unresolved
+
+    @staticmethod
+    def _normalize_execution_spec(
+        *,
+        execution_spec: ToolExecutionSpec | dict[str, object],
+        normalized_key: str,
+        normalized_intent: str,
+    ) -> ToolExecutionSpec:
+        execution_spec = execution_spec if isinstance(execution_spec, dict) else {}
+        dependency = execution_spec.get("dependency") if isinstance(execution_spec.get("dependency"), dict) else {}
+        required = dependency.get("requires_artifacts") if isinstance(dependency.get("requires_artifacts"), list) else []
+        produced = dependency.get("produces_artifacts") if isinstance(dependency.get("produces_artifacts"), list) else []
+        optional_requires = dependency.get("optional_requires") if isinstance(dependency.get("optional_requires"), list) else []
+        if not required:
+            required = default_required_artifact_keys_by_intent(normalized_intent)
+        if not produced:
+            produced = default_produced_artifact_keys_by_intent(normalized_intent)
+        if not optional_requires:
+            optional_requires = default_optional_required_artifact_keys_by_intent(normalized_intent)
+        return {
+            "intent": " ".join(str(execution_spec.get("intent", normalized_intent)).split()).strip().lower(),
+            "tool_key": " ".join(str(execution_spec.get("tool_key", normalized_key)).split()).strip().lower().replace(" ", "_"),
+            "stage_profile": " ".join(str(execution_spec.get("stage_profile", "default_asset_profile")).split()).strip().lower(),
+            "requirements_schema_key": " ".join(
+                str(execution_spec.get("requirements_schema_key", normalized_intent)).split()
+            ).strip().lower(),
+            "verify_profile": " ".join(
+                str(execution_spec.get("verify_profile", _default_verify_profile_by_intent(normalized_intent))).split()
+            ).strip().lower(),
+            "verify_required": bool(execution_spec.get("verify_required", True)),
+            "execution_policy": _normalize_execution_policy(
+                execution_policy=execution_spec.get("execution_policy"),
+                intent=normalized_intent,
+            ),
+            "dependency": {
+                "requires_artifacts": [str(item).strip() for item in required if str(item).strip()],
+                "produces_artifacts": [str(item).strip() for item in produced if str(item).strip()],
+                "optional_requires": [str(item).strip() for item in optional_requires if str(item).strip()],
+            },
+        }
+
+    @staticmethod
+    def _normalize_schema_ref(*, intent: str, schema_ref: dict[str, object]) -> ArtifactSchemaRef:
+        version = " ".join(str(schema_ref.get("version", "v1")).split()).strip().lower() or "v1"
+        schema_id = " ".join(str(schema_ref.get("id", f"{intent}.{version}")).split()).strip() or f"{intent}.{version}"
+        schema_intent = " ".join(str(schema_ref.get("intent", intent)).split()).strip().lower() or intent
+        return {
+            "intent": schema_intent,
+            "version": version,
+            "id": schema_id,
+        }
+
+
+def build_default_agent_tool_registry(
+    extra_tools: Iterable[AgentToolDefinition] | None = None,
+) -> AgentToolRegistry:
+    default_descriptions = {
+        "topic": "Generates detailed topic explanation content.",
+        "mindmap": "Builds a hierarchical visual concept map.",
+        "flashcards": "Creates study flashcards with concise Q/A pairs.",
+        "data table": "Generates structured comparison/analysis tables.",
+        "quiz": "Builds quiz questions with answer keys.",
+        "slideshow": "Creates presentation slides with optional code.",
+        "video": "Generates narrated video payload and multi-voice script.",
+        "audio_overview": "Creates podcast-style multi-speaker audio scripts.",
+        "report": "Generates long-form report documents.",
+    }
+    tools: list[AgentToolDefinition] = []
+    for intent in ASSET_INTENTS:
+        tools.append(
+            AgentToolDefinition(
+                key=intent.replace(" ", "_"),
+                intent=intent,
+                title=ASSET_TAB_TITLE_BY_INTENT.get(intent, intent.title()),
+                description=default_descriptions.get(intent, f"{intent.title()} generation tool."),
+                capabilities=["generative_asset"],
+                schema_ref={
+                    "intent": normalize_intent(intent),
+                    "version": "v1",
+                    "id": f"{normalize_intent(intent).replace(' ', '_')}.v1",
+                },
+                execution_spec={
+                    "intent": intent,
+                    "tool_key": intent.replace(" ", "_"),
+                    "stage_profile": "media_asset_profile" if intent in {"video", "audio_overview"} else "default_asset_profile",
+                    "requirements_schema_key": intent,
+                    "verify_profile": _default_verify_profile_by_intent(intent),
+                    "verify_required": True,
+                    "execution_policy": _default_execution_policy_by_intent(intent),
+                    "dependency": {
+                        "requires_artifacts": default_required_artifact_keys_by_intent(intent),
+                        "produces_artifacts": default_produced_artifact_keys_by_intent(intent),
+                        "optional_requires": default_optional_required_artifact_keys_by_intent(intent),
+                    },
+                },
+            )
+        )
+    registry = AgentToolRegistry(tools=tools)
+    for tool in extra_tools or []:
+        registry.register(tool)
+    return registry
+
+
+def _default_verify_profile_by_intent(intent: str) -> str:
+    normalized = normalize_intent(intent)
+    if normalized in {"topic", "report"}:
+        return "text_asset_verify"
+    if normalized in {"video", "audio_overview"}:
+        return "media_asset_verify"
+    return "structured_asset_verify"
+
+
+def _normalize_execution_policy(*, execution_policy: object, intent: str) -> dict[str, object]:
+    default = _default_execution_policy_by_intent(intent)
+    if not isinstance(execution_policy, dict):
+        return default
+    retry_backoff = execution_policy.get("retry_backoff_ms")
+    return {
+        "timeout_ms": _int_or_none(execution_policy.get("timeout_ms"), default.get("timeout_ms")),
+        "max_retries": max(0, min(5, _int_or_default(execution_policy.get("max_retries"), int(default.get("max_retries", 1))))),
+        "retry_backoff_ms": [
+            max(0, min(120000, _int_or_default(item, 0)))
+            for item in (retry_backoff if isinstance(retry_backoff, list) else list(default.get("retry_backoff_ms", [])))
+        ],
+        "fail_policy": (
+            "fail_fast"
+            if " ".join(str(execution_policy.get("fail_policy", default.get("fail_policy", "continue"))).split()).strip().lower()
+            in {"fail_fast", "failfast"}
+            else "continue"
+        ),
+        "concurrency_group": (
+            " ".join(str(execution_policy.get("concurrency_group", default.get("concurrency_group") or "")).split()).strip()
+            or None
+        ),
+        "profile": (
+            " ".join(str(execution_policy.get("profile", default.get("profile", ""))).split()).strip().lower()
+            or str(default.get("profile", "structured_policy_gate"))
+        ),
+    }
+
+
+def _default_execution_policy_by_intent(intent: str) -> dict[str, object]:
+    normalized = normalize_intent(intent)
+    profile = "structured_policy_gate"
+    if normalized in {"topic", "report"}:
+        profile = "text_policy_gate"
+    elif normalized in {"video", "audio_overview"}:
+        profile = "media_policy_gate"
+    return {
+        "timeout_ms": None,
+        "max_retries": 1,
+        "retry_backoff_ms": [0],
+        "fail_policy": "continue",
+        "concurrency_group": None,
+        "profile": profile,
+    }
+
+
+def _int_or_none(value: object, default: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(default) if default is not None else None
+        except (TypeError, ValueError):
+            return None
+
+
+def _int_or_default(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default

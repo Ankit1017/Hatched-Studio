@@ -1,0 +1,7 @@
+{
+  "id": "flashcards.v1",
+  "intent": "flashcards",
+  "version": "v1",
+  "required_section_key": "artifact.flashcards.cards",
+  "required_data_type": "object"
+}
