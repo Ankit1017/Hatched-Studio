@@ -3,7 +3,7 @@
   "pack_version": "v1",
   "pack_schema_version": "v2",
   "cache_fps": 24,
-  "cache_resolution": "192x192",
+  "cache_resolution": "512x512",
   "license": "Commercial-friendly internal asset pack",
   "characters": [
     {
