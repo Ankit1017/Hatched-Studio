@@ -5,6 +5,7 @@ from typing import cast
 from main_app.contracts import (
     CartoonBackgroundStyle,
     CartoonCharacterSpec,
+    CartoonFidelityPreset,
     CartoonOutputMode,
     CartoonPayload,
     CartoonQualityTier,
@@ -51,6 +52,7 @@ class CartoonShortsAssetService:
         quality_tier: str = "auto",
         render_style: str = "scene",
         background_style: str = "auto",
+        fidelity_preset: str = "auto_profile",
         settings: GroqSettings,
     ) -> CartoonShortsGenerationResult:
         topic_clean = _clean(topic)
@@ -61,6 +63,7 @@ class CartoonShortsAssetService:
         quality_tier_clean = _normalize_quality_tier(quality_tier)
         render_style_clean = _normalize_render_style(render_style)
         background_style_clean = _normalize_background_style(background_style)
+        fidelity_preset_clean = _normalize_fidelity_preset(fidelity_preset)
         notes: list[str] = []
 
         character_roster = self._character_pack_service.load_roster(speaker_count=speaker_count)
@@ -149,6 +152,7 @@ class CartoonShortsAssetService:
                 "quality_tier": quality_tier_clean,
                 "render_style": render_style_clean,
                 "background_style": background_style_clean,
+                "fidelity_preset": fidelity_preset_clean,
                 "metadata": {
                     "idea": idea_clean,
                     "scene_count_requested": max(2, min(int(scene_count), 10)),
@@ -158,6 +162,7 @@ class CartoonShortsAssetService:
                     "quality_tier": quality_tier_clean,
                     "render_style": render_style_clean,
                     "background_style": background_style_clean,
+                    "fidelity_preset": fidelity_preset_clean,
                     "pack_motion_warning_count": len(motion_warnings),
                 },
             },
@@ -184,6 +189,7 @@ class CartoonShortsAssetService:
             quality_tier=quality_tier_clean,
             render_style=render_style_clean,
             background_style=background_style_clean,
+            fidelity_preset=fidelity_preset_clean,
             result=result,
             model=settings.normalized_model,
         )
@@ -204,6 +210,7 @@ class CartoonShortsAssetService:
         quality_tier: CartoonQualityTier,
         render_style: CartoonRenderStyle,
         background_style: CartoonBackgroundStyle,
+        fidelity_preset: CartoonFidelityPreset,
         result: CartoonShortsGenerationResult,
         model: str,
     ) -> None:
@@ -228,6 +235,7 @@ class CartoonShortsAssetService:
                 "quality_tier": quality_tier,
                 "render_style": render_style,
                 "background_style": background_style,
+                "fidelity_preset": fidelity_preset,
             },
             result_payload=payload,
             status="error" if result.parse_error else "success",
@@ -318,6 +326,13 @@ def _normalize_background_style(value: str) -> CartoonBackgroundStyle:
     if raw in {"auto", "scene", "chroma_green"}:
         return cast(CartoonBackgroundStyle, raw)
     return cast(CartoonBackgroundStyle, "auto")
+
+
+def _normalize_fidelity_preset(value: str) -> CartoonFidelityPreset:
+    raw = _clean(value).lower()
+    if raw in {"auto_profile", "hd_1080p30", "uhd_4k30"}:
+        return cast(CartoonFidelityPreset, raw)
+    return cast(CartoonFidelityPreset, "auto_profile")
 
 
 def _int_safe(value: object, *, default: int) -> int:

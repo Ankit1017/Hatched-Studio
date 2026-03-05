@@ -13,6 +13,7 @@ from main_app.contracts import (
     CartoonBackgroundStyle,
     CartoonCharacterSpec,
     CartoonDialogueTurn,
+    CartoonFidelityPreset,
     CartoonOutputArtifact,
     CartoonPayload,
     CartoonQualityTier,
@@ -38,6 +39,7 @@ class _RenderTarget:
     width: int
     height: int
     fps: int
+    bitrate_kbps: int
 
 
 @dataclass(frozen=True)
@@ -71,8 +73,14 @@ class CartoonExportService:
         quality_tier = _resolve_quality_tier(payload=cartoon_payload, profile=profile)
         render_style = _resolve_render_style(payload=cartoon_payload)
         background_style = _resolve_background_style(payload=cartoon_payload, render_style=render_style)
+        fidelity_preset = _resolve_fidelity_preset(payload=cartoon_payload)
         cinematic_mode = _bool_from_metadata(payload=cartoon_payload, key="cinematic_story_mode", default=True)
-        targets = self._build_targets(profile=profile, output_mode=selected_mode, quality_tier=quality_tier)
+        targets = self._build_targets(
+            profile=profile,
+            output_mode=selected_mode,
+            quality_tier=quality_tier,
+            fidelity_preset=fidelity_preset,
+        )
         render_root: Path | None = None
         outputs: dict[str, bytes] = {}
         output_artifacts: list[CartoonOutputArtifact] = []
@@ -96,6 +104,7 @@ class CartoonExportService:
                             "quality_tier": quality_tier,
                             "render_style": render_style,
                             "background_style": background_style,
+                            "fidelity_preset": fidelity_preset,
                         },
                     )
                 )
@@ -208,6 +217,8 @@ class CartoonExportService:
                                 "quality_tier": quality_tier,
                                 "render_style": render_style,
                                 "background_style": background_style,
+                                "fidelity_preset": fidelity_preset,
+                                "bitrate_kbps": target.bitrate_kbps,
                             },
                         )
                     )
@@ -339,6 +350,7 @@ class CartoonExportService:
                         fps=target.fps,
                         codec="libx264",
                         audio_codec="aac",
+                        bitrate=f"{max(600, int(target.bitrate_kbps))}k",
                         logger=None,
                     )
                     if output_path.exists():
@@ -419,10 +431,12 @@ class CartoonExportService:
             cartoon_payload["timeline_schema_version"] = cast(Any, timeline_schema_version)
             cartoon_payload["render_style"] = render_style
             cartoon_payload["background_style"] = background_style
+            cartoon_payload["fidelity_preset"] = fidelity_preset
             metadata = cartoon_payload.get("metadata", {})
             if isinstance(metadata, dict):
                 metadata["render_style"] = render_style
                 metadata["background_style"] = background_style
+                metadata["fidelity_preset"] = fidelity_preset
             duration_ms = max((perf_counter() - started_at) * 1000.0, 0.0)
             if self._telemetry_service is not None:
                 with self._telemetry_service.context_scope(request_id=request_id):
@@ -449,6 +463,7 @@ class CartoonExportService:
                                 "quality_tier": quality_tier,
                                 "render_style": render_style,
                                 "background_style": background_style,
+                                "fidelity_preset": fidelity_preset,
                             },
                         )
                     )
@@ -483,25 +498,56 @@ class CartoonExportService:
         profile: CartoonRenderProfile,
         output_mode: str,
         quality_tier: CartoonQualityTier,
+        fidelity_preset: CartoonFidelityPreset,
     ) -> list[_RenderTarget]:
         fps = _tier_adjusted_fps(_int_safe(profile.get("fps"), default=24), quality_tier=quality_tier)
         targets: list[_RenderTarget] = []
+        shorts_width = max(360, _int_safe(profile.get("shorts_width"), default=1080))
+        shorts_height = max(640, _int_safe(profile.get("shorts_height"), default=1920))
+        widescreen_width = max(640, _int_safe(profile.get("widescreen_width"), default=1920))
+        widescreen_height = max(360, _int_safe(profile.get("widescreen_height"), default=1080))
+
+        if fidelity_preset == "hd_1080p30":
+            shorts_width, shorts_height = 1080, 1920
+            widescreen_width, widescreen_height = 1920, 1080
+            fps = 30
+        elif fidelity_preset == "uhd_4k30":
+            shorts_width, shorts_height = 2160, 3840
+            widescreen_width, widescreen_height = 3840, 2160
+            fps = 30
+
         if output_mode in {"dual", "shorts_9_16"}:
+            shorts_bitrate = _target_bitrate_kbps(
+                width=shorts_width,
+                height=shorts_height,
+                fps=fps,
+                quality_tier=quality_tier,
+                fidelity_preset=fidelity_preset,
+            )
             targets.append(
                 _RenderTarget(
                     key="shorts_9_16",
-                    width=max(360, _int_safe(profile.get("shorts_width"), default=1080)),
-                    height=max(640, _int_safe(profile.get("shorts_height"), default=1920)),
+                    width=shorts_width,
+                    height=shorts_height,
                     fps=fps,
+                    bitrate_kbps=shorts_bitrate,
                 )
             )
         if output_mode in {"dual", "widescreen_16_9"}:
+            widescreen_bitrate = _target_bitrate_kbps(
+                width=widescreen_width,
+                height=widescreen_height,
+                fps=fps,
+                quality_tier=quality_tier,
+                fidelity_preset=fidelity_preset,
+            )
             targets.append(
                 _RenderTarget(
                     key="widescreen_16_9",
-                    width=max(640, _int_safe(profile.get("widescreen_width"), default=1920)),
-                    height=max(360, _int_safe(profile.get("widescreen_height"), default=1080)),
+                    width=widescreen_width,
+                    height=widescreen_height,
                     fps=fps,
+                    bitrate_kbps=widescreen_bitrate,
                 )
             )
         return targets
@@ -573,6 +619,15 @@ def _resolve_background_style(*, payload: CartoonPayload, render_style: CartoonR
     return cast(CartoonBackgroundStyle, "scene")
 
 
+def _resolve_fidelity_preset(*, payload: CartoonPayload) -> CartoonFidelityPreset:
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    raw = _clean(payload.get("fidelity_preset") or metadata_map.get("fidelity_preset") or "auto_profile").lower()
+    if raw in {"auto_profile", "hd_1080p30", "uhd_4k30"}:
+        return cast(CartoonFidelityPreset, raw)
+    return cast(CartoonFidelityPreset, "auto_profile")
+
+
 def _tier_adjusted_fps(base_fps: int, *, quality_tier: CartoonQualityTier) -> int:
     safe = max(12, int(base_fps))
     if quality_tier == "light":
@@ -580,6 +635,27 @@ def _tier_adjusted_fps(base_fps: int, *, quality_tier: CartoonQualityTier) -> in
     if quality_tier == "high":
         return max(safe, 30)
     return max(16, safe)
+
+
+def _target_bitrate_kbps(
+    *,
+    width: int,
+    height: int,
+    fps: int,
+    quality_tier: CartoonQualityTier,
+    fidelity_preset: CartoonFidelityPreset,
+) -> int:
+    if fidelity_preset == "hd_1080p30":
+        return 6_500
+    if fidelity_preset == "uhd_4k30":
+        return 18_000
+    pixels = max(1, int(width) * int(height))
+    base = int((pixels / 1_000_000.0) * max(12, int(fps)) * 220)
+    if quality_tier == "light":
+        base = int(base * 0.75)
+    elif quality_tier == "high":
+        base = int(base * 1.2)
+    return max(900, min(base, 22_000))
 
 
 def _pack_root_from_payload(payload: CartoonPayload) -> Path:

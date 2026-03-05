@@ -45,6 +45,7 @@ Checks:
 2. Output mode includes at least one target.
 3. Timeline has valid scenes/turns.
 4. Review `cartoon.export.error` event attributes.
+5. If `fidelity_preset=uhd_4k30`, verify machine memory/CPU headroom.
 
 ## 3) Rendering is slow
 

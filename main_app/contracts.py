@@ -84,6 +84,12 @@ CartoonBackgroundStyle: TypeAlias = Literal[
     "chroma_green",
 ]
 
+CartoonFidelityPreset: TypeAlias = Literal[
+    "auto_profile",
+    "hd_1080p30",
+    "uhd_4k30",
+]
+
 CartoonEaseType: TypeAlias = Literal[
     "linear",
     "ease_in",
@@ -325,6 +331,7 @@ class CartoonPayload(TypedDict, total=False):
     quality_tier: CartoonQualityTier
     render_style: CartoonRenderStyle
     background_style: CartoonBackgroundStyle
+    fidelity_preset: CartoonFidelityPreset
 
 
 class AssetSection(TypedDict, total=False):
@@ -609,6 +616,7 @@ class IntentPayload(TypedDict, total=False):
     quality_tier: str
     render_style: str
     background_style: str
+    fidelity_preset: str
     idea: str
     manual_timeline_json: str
 

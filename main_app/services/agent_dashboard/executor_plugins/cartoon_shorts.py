@@ -46,6 +46,7 @@ def _build_executor(context: AssetExecutorPluginContext) -> AssetExecutor:
             quality_tier=str(payload.get("quality_tier", "auto")),
             render_style=str(payload.get("render_style", "scene")),
             background_style=str(payload.get("background_style", "auto")),
+            fidelity_preset=str(payload.get("fidelity_preset", "auto_profile")),
             settings=settings,
         )
         if result.parse_error or not isinstance(result.cartoon_payload, dict):

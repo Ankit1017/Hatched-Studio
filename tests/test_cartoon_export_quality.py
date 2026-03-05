@@ -4,9 +4,12 @@ import unittest
 
 from main_app.services.cartoon_export_service import (
     _resolve_background_style,
+    _resolve_fidelity_preset,
     _resolve_quality_tier,
     _resolve_render_style,
+    _target_bitrate_kbps,
     _tier_adjusted_fps,
+    CartoonExportService,
 )
 
 
@@ -41,6 +44,55 @@ class TestCartoonExportQuality(unittest.TestCase):
             _resolve_background_style(payload={"metadata": {"background_style": "auto"}}, render_style="scene"),
             "scene",
         )
+
+    def test_fidelity_preset_resolution(self) -> None:
+        self.assertEqual(_resolve_fidelity_preset(payload={"metadata": {"fidelity_preset": "auto_profile"}}), "auto_profile")
+        self.assertEqual(_resolve_fidelity_preset(payload={"metadata": {"fidelity_preset": "hd_1080p30"}}), "hd_1080p30")
+        self.assertEqual(_resolve_fidelity_preset(payload={"metadata": {"fidelity_preset": "uhd_4k30"}}), "uhd_4k30")
+        self.assertEqual(_resolve_fidelity_preset(payload={"metadata": {"fidelity_preset": "bad"}}), "auto_profile")
+
+    def test_bitrate_targets_by_preset(self) -> None:
+        self.assertEqual(
+            _target_bitrate_kbps(
+                width=1920,
+                height=1080,
+                fps=30,
+                quality_tier="balanced",
+                fidelity_preset="hd_1080p30",
+            ),
+            6500,
+        )
+        self.assertEqual(
+            _target_bitrate_kbps(
+                width=3840,
+                height=2160,
+                fps=30,
+                quality_tier="balanced",
+                fidelity_preset="uhd_4k30",
+            ),
+            18000,
+        )
+
+    def test_build_targets_applies_fidelity_preset_dimensions(self) -> None:
+        service = CartoonExportService()
+        targets = service._build_targets(  # noqa: SLF001
+            profile={
+                "shorts_width": 540,
+                "shorts_height": 960,
+                "widescreen_width": 960,
+                "widescreen_height": 540,
+                "fps": 20,
+            },
+            output_mode="dual",
+            quality_tier="light",
+            fidelity_preset="hd_1080p30",
+        )
+        target_map = {target.key: target for target in targets}
+        self.assertEqual(target_map["shorts_9_16"].width, 1080)
+        self.assertEqual(target_map["shorts_9_16"].height, 1920)
+        self.assertEqual(target_map["widescreen_16_9"].width, 1920)
+        self.assertEqual(target_map["widescreen_16_9"].height, 1080)
+        self.assertEqual(target_map["shorts_9_16"].fps, 30)
 
 
 if __name__ == "__main__":

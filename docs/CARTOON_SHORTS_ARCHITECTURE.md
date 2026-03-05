@@ -44,6 +44,7 @@ v2 additions:
 - `quality_tier` (`auto | light | balanced | high`)
 - `render_style` (`scene | character_showcase`)
 - `background_style` (`auto | scene | chroma_green`)
+- `fidelity_preset` (`auto_profile | hd_1080p30 | uhd_4k30`)
 - `camera_track`, `character_tracks`, `subtitle_track` on scenes
 - extended `CartoonCharacterSpec` fields for cache-based rendering
 
