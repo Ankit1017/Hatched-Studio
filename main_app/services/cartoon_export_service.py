@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import base64
+import json
 import logging
 from pathlib import Path
 import shutil
@@ -16,11 +17,13 @@ from main_app.contracts import (
     CartoonFidelityPreset,
     CartoonOutputArtifact,
     CartoonPayload,
+    CartoonQABundleMode,
     CartoonQualityTier,
     CartoonRenderProfile,
     CartoonRenderStyle,
     CartoonShowcaseAvatarMode,
     CartoonScene,
+    CartoonStylePreset,
 )
 from main_app.services.cartoon_character_asset_validator import CartoonCharacterAssetValidator
 from main_app.services.cartoon_lottie_cache_service import CartoonLottieCacheService
@@ -76,12 +79,16 @@ class CartoonExportService:
         background_style = _resolve_background_style(payload=cartoon_payload, render_style=render_style)
         fidelity_preset = _resolve_fidelity_preset(payload=cartoon_payload)
         showcase_avatar_mode = _resolve_showcase_avatar_mode(payload=cartoon_payload, render_style=render_style)
+        style_preset = _resolve_style_preset(payload=cartoon_payload)
+        qa_bundle_mode = _resolve_qa_bundle_mode(payload=cartoon_payload)
         cinematic_mode = _bool_from_metadata(payload=cartoon_payload, key="cinematic_story_mode", default=True)
         targets = self._build_targets(
             profile=profile,
             output_mode=selected_mode,
             quality_tier=quality_tier,
             fidelity_preset=fidelity_preset,
+            render_style=render_style,
+            style_preset=style_preset,
         )
         render_root: Path | None = None
         outputs: dict[str, bytes] = {}
@@ -108,6 +115,8 @@ class CartoonExportService:
                             "background_style": background_style,
                             "fidelity_preset": fidelity_preset,
                             "showcase_avatar_mode": showcase_avatar_mode,
+                            "style_preset": style_preset,
+                            "qa_bundle_mode": qa_bundle_mode,
                         },
                     )
                 )
@@ -116,6 +125,20 @@ class CartoonExportService:
                     value=float(len(_timeline_scenes(cartoon_payload))),
                     attrs={"output_mode": selected_mode, "quality_tier": quality_tier},
                 )
+                if style_preset == "expected_showcase":
+                    self._telemetry_service.record_event(
+                        ObservabilityEvent(
+                            event_name="cartoon.showcase.preset.applied",
+                            component="export.cartoon",
+                            status="ok",
+                            timestamp=_now_iso(),
+                            attributes={
+                                "render_style": render_style,
+                                "background_style": background_style,
+                                "fidelity_preset": fidelity_preset,
+                            },
+                        )
+                    )
                 self._telemetry_service.record_event(
                     ObservabilityEvent(
                         event_name="cartoon.render.quality_tier",
@@ -150,6 +173,7 @@ class CartoonExportService:
             if timeline_schema_version == "v2":
                 pack_root = _pack_root_from_payload(cartoon_payload)
                 lottie_cache_service = CartoonLottieCacheService(pack_root=pack_root)
+                pack_cache_resolution = _pack_cache_resolution_from_payload(cartoon_payload)
                 if self._telemetry_service is not None:
                     self._telemetry_service.record_event(
                         ObservabilityEvent(
@@ -160,7 +184,10 @@ class CartoonExportService:
                             attributes={"pack_root": str(pack_root)},
                         )
                     )
-                validator = CartoonCharacterAssetValidator(pack_root=pack_root)
+                validator = CartoonCharacterAssetValidator(
+                    pack_root=pack_root,
+                    expected_cache_resolution=pack_cache_resolution,
+                )
                 validation_errors = validator.validate_roster(
                     roster=cast(list[CartoonCharacterSpec], cartoon_payload.get("character_roster", [])),
                     require_lottie_cache=True,
@@ -187,11 +214,32 @@ class CartoonExportService:
                     roster=cast(list[CartoonCharacterSpec], cartoon_payload.get("character_roster", [])),
                     timeline_schema_version=timeline_schema_version,
                 )
+                motion_warning_summary = validator.motion_quality_summary(
+                    roster=cast(list[CartoonCharacterSpec], cartoon_payload.get("character_roster", [])),
+                    timeline_schema_version=timeline_schema_version,
+                )
+                metadata = cartoon_payload.get("metadata", {})
+                metadata_map = metadata if isinstance(metadata, dict) else {}
+                metadata_map["pack_motion_warning_count"] = len(motion_warnings)
+                metadata_map["pack_motion_warning_summary"] = motion_warning_summary
+                cartoon_payload["metadata"] = metadata_map
                 if self._telemetry_service is not None:
                     self._telemetry_service.record_metric(
                         name="cartoon_pack_motion_warnings_total",
                         value=float(len(motion_warnings)),
                         attrs={"timeline_schema_version": timeline_schema_version},
+                    )
+                    self._telemetry_service.record_event(
+                        ObservabilityEvent(
+                            event_name="cartoon.pack.audit.summary",
+                            component="export.cartoon",
+                            status="ok",
+                            timestamp=_now_iso(),
+                            attributes={
+                                "warning_count": len(motion_warnings),
+                                "character_count": len(motion_warning_summary),
+                            },
+                        )
                     )
                 if self._telemetry_service is not None:
                     self._telemetry_service.record_event(
@@ -223,6 +271,7 @@ class CartoonExportService:
                                 "fidelity_preset": fidelity_preset,
                                 "bitrate_kbps": target.bitrate_kbps,
                                 "showcase_avatar_mode": showcase_avatar_mode,
+                                "style_preset": style_preset,
                             },
                         )
                     )
@@ -355,6 +404,8 @@ class CartoonExportService:
                         fps=target.fps,
                         codec="libx264",
                         audio_codec="aac",
+                        audio_bitrate="192k",
+                        audio_fps=48_000,
                         bitrate=f"{max(600, int(target.bitrate_kbps))}k",
                         logger=None,
                     )
@@ -430,6 +481,60 @@ class CartoonExportService:
                     attrs={"timeline_schema_version": timeline_schema_version},
                 )
 
+            qa_bundle: dict[str, object] | None = None
+            if qa_bundle_mode == "auto":
+                qa_bundle = _build_qa_bundle(
+                    payload=cartoon_payload,
+                    profile=profile,
+                    timeline_schema_version=timeline_schema_version,
+                    quality_tier=quality_tier,
+                    render_style=render_style,
+                    background_style=background_style,
+                    fidelity_preset=fidelity_preset,
+                    showcase_avatar_mode=showcase_avatar_mode,
+                    style_preset=style_preset,
+                    selected_mode=selected_mode,
+                    cinematic_mode=cinematic_mode,
+                    targets=targets,
+                    cache_miss_count=(lottie_cache_service.cache_miss_count if lottie_cache_service is not None else 0),
+                )
+                qa_bundle_bytes = json.dumps(qa_bundle, ensure_ascii=True, sort_keys=True, indent=2).encode("utf-8")
+                output_artifacts.append(
+                    cast(
+                        CartoonOutputArtifact,
+                        {
+                            "key": "qa_bundle",
+                            "format": "json",
+                            "status": "ok",
+                            "bytes": len(qa_bundle_bytes),
+                            "path_hint": "qa_bundle.json",
+                            "mime": "application/json",
+                        },
+                    )
+                )
+                metadata = cartoon_payload.get("metadata", {})
+                metadata_map = metadata if isinstance(metadata, dict) else {}
+                metadata_map["qa_bundle"] = cast(Any, qa_bundle)
+                metadata_map["qa_bundle_mode"] = qa_bundle_mode
+                metadata_map["qa_bundle_note"] = (
+                    f"QA bundle generated ({len(targets)} target(s), "
+                    f"{len(_timeline_scenes(cartoon_payload))} scene(s))."
+                )
+                cartoon_payload["metadata"] = metadata_map
+                if self._telemetry_service is not None:
+                    self._telemetry_service.record_event(
+                        ObservabilityEvent(
+                            event_name="cartoon.qa.bundle.generated",
+                            component="export.cartoon",
+                            status="ok",
+                            timestamp=_now_iso(),
+                            attributes={
+                                "target_count": len(targets),
+                                "scene_count": len(_timeline_scenes(cartoon_payload)),
+                            },
+                        )
+                    )
+
             cartoon_payload["output_artifacts"] = output_artifacts
             cartoon_payload["render_profile"] = profile
             cartoon_payload["quality_tier"] = quality_tier
@@ -438,12 +543,16 @@ class CartoonExportService:
             cartoon_payload["background_style"] = background_style
             cartoon_payload["fidelity_preset"] = fidelity_preset
             cartoon_payload["showcase_avatar_mode"] = showcase_avatar_mode
+            cartoon_payload["style_preset"] = style_preset
+            cartoon_payload["qa_bundle_mode"] = qa_bundle_mode
             metadata = cartoon_payload.get("metadata", {})
             if isinstance(metadata, dict):
                 metadata["render_style"] = render_style
                 metadata["background_style"] = background_style
                 metadata["fidelity_preset"] = fidelity_preset
                 metadata["showcase_avatar_mode"] = showcase_avatar_mode
+                metadata["style_preset"] = style_preset
+                metadata["qa_bundle_mode"] = qa_bundle_mode
             duration_ms = max((perf_counter() - started_at) * 1000.0, 0.0)
             if self._telemetry_service is not None:
                 with self._telemetry_service.context_scope(request_id=request_id):
@@ -472,6 +581,8 @@ class CartoonExportService:
                                 "background_style": background_style,
                                 "fidelity_preset": fidelity_preset,
                                 "showcase_avatar_mode": showcase_avatar_mode,
+                                "style_preset": style_preset,
+                                "qa_bundle_mode": qa_bundle_mode,
                             },
                         )
                     )
@@ -507,6 +618,8 @@ class CartoonExportService:
         output_mode: str,
         quality_tier: CartoonQualityTier,
         fidelity_preset: CartoonFidelityPreset,
+        render_style: CartoonRenderStyle,
+        style_preset: CartoonStylePreset,
     ) -> list[_RenderTarget]:
         fps = _tier_adjusted_fps(_int_safe(profile.get("fps"), default=24), quality_tier=quality_tier)
         targets: list[_RenderTarget] = []
@@ -523,6 +636,12 @@ class CartoonExportService:
             shorts_width, shorts_height = 2160, 3840
             widescreen_width, widescreen_height = 3840, 2160
             fps = 30
+        elif fidelity_preset == "auto_profile" and style_preset == "expected_showcase" and render_style == "character_showcase":
+            shorts_width = max(shorts_width, 1080)
+            shorts_height = max(shorts_height, 1920)
+            widescreen_width = max(widescreen_width, 1920)
+            widescreen_height = max(widescreen_height, 1080)
+            fps = max(fps, 30)
 
         if output_mode in {"dual", "shorts_9_16"}:
             shorts_bitrate = _target_bitrate_kbps(
@@ -650,6 +769,24 @@ def _resolve_showcase_avatar_mode(*, payload: CartoonPayload, render_style: Cart
     return cast(CartoonShowcaseAvatarMode, "cache_sprite")
 
 
+def _resolve_style_preset(*, payload: CartoonPayload) -> CartoonStylePreset:
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    raw = _clean(payload.get("style_preset") or metadata_map.get("style_preset") or "default_scene").lower()
+    if raw in {"default_scene", "expected_showcase"}:
+        return cast(CartoonStylePreset, raw)
+    return cast(CartoonStylePreset, "default_scene")
+
+
+def _resolve_qa_bundle_mode(*, payload: CartoonPayload) -> CartoonQABundleMode:
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    raw = _clean(payload.get("qa_bundle_mode") or metadata_map.get("qa_bundle_mode") or "auto").lower()
+    if raw in {"off", "auto"}:
+        return cast(CartoonQABundleMode, raw)
+    return cast(CartoonQABundleMode, "auto")
+
+
 def _tier_adjusted_fps(base_fps: int, *, quality_tier: CartoonQualityTier) -> int:
     safe = max(12, int(base_fps))
     if quality_tier == "light":
@@ -700,6 +837,15 @@ def _pack_cache_fps_from_payload(payload: CartoonPayload) -> int:
     return 24
 
 
+def _pack_cache_resolution_from_payload(payload: CartoonPayload) -> str:
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    pack = metadata_map.get("pack")
+    if isinstance(pack, dict):
+        return _clean(pack.get("cache_resolution"))
+    return ""
+
+
 def _timeline_scenes(payload: CartoonPayload) -> list[CartoonScene]:
     timeline = payload.get("timeline", {})
     if not isinstance(timeline, dict):
@@ -708,6 +854,75 @@ def _timeline_scenes(payload: CartoonPayload) -> list[CartoonScene]:
     if not isinstance(scenes, list):
         return []
     return [scene for scene in scenes if isinstance(scene, dict)]
+
+
+def _build_qa_bundle(
+    *,
+    payload: CartoonPayload,
+    profile: CartoonRenderProfile,
+    timeline_schema_version: str,
+    quality_tier: CartoonQualityTier,
+    render_style: CartoonRenderStyle,
+    background_style: CartoonBackgroundStyle,
+    fidelity_preset: CartoonFidelityPreset,
+    showcase_avatar_mode: CartoonShowcaseAvatarMode,
+    style_preset: CartoonStylePreset,
+    selected_mode: str,
+    cinematic_mode: bool,
+    targets: list[_RenderTarget],
+    cache_miss_count: int,
+) -> dict[str, object]:
+    scenes = _timeline_scenes(payload)
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    scene_summaries: list[dict[str, object]] = []
+    for scene in scenes:
+        scene_index = _int_safe(scene.get("scene_index"), default=0)
+        duration_ms = max(0, _int_safe(scene.get("duration_ms"), default=0))
+        per_target_frames: dict[str, int] = {}
+        for target in targets:
+            if cinematic_mode:
+                frame_total = max(2, int(round((max(1, duration_ms) / 1000.0) * float(target.fps))))
+            else:
+                frame_total = 1
+            per_target_frames[target.key] = frame_total
+        scene_summaries.append(
+            {
+                "scene_index": scene_index,
+                "duration_ms": duration_ms,
+                "turn_count": len(_scene_turns(scene)),
+                "frame_count_by_target": per_target_frames,
+            }
+        )
+    return {
+        "generated_at": _now_iso(),
+        "topic": _clean(payload.get("topic")),
+        "output_mode": selected_mode,
+        "timeline_schema_version": timeline_schema_version,
+        "quality_tier": quality_tier,
+        "render_style": render_style,
+        "background_style": background_style,
+        "fidelity_preset": fidelity_preset,
+        "showcase_avatar_mode": showcase_avatar_mode,
+        "style_preset": style_preset,
+        "profile_key": _clean(profile.get("profile_key")),
+        "target_count": len(targets),
+        "targets": [
+            {
+                "key": target.key,
+                "width": target.width,
+                "height": target.height,
+                "fps": target.fps,
+                "bitrate_kbps": target.bitrate_kbps,
+            }
+            for target in targets
+        ],
+        "scene_count": len(scene_summaries),
+        "scenes": scene_summaries,
+        "cache_miss_count": max(0, int(cache_miss_count)),
+        "pack_motion_warning_count": max(0, _int_safe(metadata_map.get("pack_motion_warning_count"), default=0)),
+        "pack_motion_warning_summary": metadata_map.get("pack_motion_warning_summary", {}),
+    }
 
 
 def _first_turn(scene: CartoonScene) -> CartoonDialogueTurn | None:

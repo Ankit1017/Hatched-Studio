@@ -247,7 +247,7 @@ class CartoonStoryboardService:
                         "speaker_id": _clean(first.get("id")) or "speaker_a",
                         "speaker_name": _clean(first.get("name")) or "Speaker A",
                         "text": opening,
-                        "emotion": "curious",
+                        "emotion": "energetic",
                         "estimated_duration_ms": 2800,
                     },
                 ),
@@ -258,7 +258,7 @@ class CartoonStoryboardService:
                         "speaker_id": _clean(second.get("id")) or "speaker_b",
                         "speaker_name": _clean(second.get("name")) or "Speaker B",
                         "text": response,
-                        "emotion": "excited",
+                        "emotion": "warm",
                         "estimated_duration_ms": 3000,
                     },
                 ),
@@ -269,11 +269,13 @@ class CartoonStoryboardService:
                         "speaker_id": _clean(first.get("id")) or "speaker_a",
                         "speaker_name": _clean(first.get("name")) or "Speaker A",
                         "text": closing,
-                        "emotion": "neutral",
+                        "emotion": "inspiring",
                         "estimated_duration_ms": 2500,
                     },
                 ),
             ]
+            focus_character_id = _clean(first.get("id")) if idx % 2 else _clean(second.get("id"))
+            active_scene_emotion = _default_mood(short_type)
             scenes.append(
                 cast(
                     CartoonScene,
@@ -287,8 +289,8 @@ class CartoonStoryboardService:
                         "camera_move": _default_camera_move(idx),
                         "transition_in": "cut" if idx == 1 else "crossfade",
                         "transition_out": "fade_black" if idx == count else "crossfade",
-                        "mood": _default_mood(short_type),
-                        "focus_character_id": _clean(first.get("id")) if idx % 2 else _clean(second.get("id")),
+                        "mood": active_scene_emotion,
+                        "focus_character_id": focus_character_id,
                         "duration_ms": sum(_int_safe(turn.get("estimated_duration_ms"), default=2500) for turn in turns),
                         "turns": turns,
                         "visual_notes": f"Template: {short_type}",
@@ -298,6 +300,8 @@ class CartoonStoryboardService:
                         "character_tracks": _default_character_tracks(
                             character_roster=character_roster,
                             scene_duration_ms=sum(_int_safe(turn.get("estimated_duration_ms"), default=2500) for turn in turns),
+                            active_character_id=focus_character_id,
+                            active_emotion=active_scene_emotion,
                         )
                         if timeline_schema_version == "v2"
                         else [],
@@ -436,45 +440,54 @@ def _default_character_tracks(
     *,
     character_roster: list[CartoonCharacterSpec],
     scene_duration_ms: int,
+    active_character_id: str = "",
+    active_emotion: str = "neutral",
 ) -> list[dict[str, object]]:
     safe_duration = max(1000, int(scene_duration_ms))
     roster = [character for character in character_roster if isinstance(character, dict)]
     if not roster:
         roster = [{"id": "ava"}, {"id": "noah"}]
+    keyframe_times = [
+        0,
+        int(round(safe_duration * 0.25)),
+        int(round(safe_duration * 0.5)),
+        int(round(safe_duration * 0.75)),
+        safe_duration,
+    ]
+    active_key = _clean(active_character_id).lower()
+    mood = _normalize_mood(active_emotion, default="neutral")
+    active_pose_cycle = ("open", "point_right", "emphasis", "open", "idle")
     output: list[dict[str, object]] = []
     slot_count = max(1, len(roster))
     for index, character in enumerate(roster):
         char_id = _clean(character.get("id")) or f"speaker_{index + 1}"
         x_norm = 0.2 + ((0.6 / max(1, slot_count - 1)) * index) if slot_count > 1 else 0.5
+        is_active = bool(active_key and _clean(char_id).lower() == active_key)
+        base_scale = _float_safe(character.get("default_scale"), default=1.0)
+        z_index = _int_safe(character.get("z_layer"), default=index)
+        keyframes: list[dict[str, object]] = []
+        for slot, t_ms in enumerate(keyframe_times):
+            sway = 0.014 if slot % 2 else -0.014
+            move_x = x_norm + (sway * (1.0 if is_active else 0.45))
+            move_y = 0.72 - (0.008 if is_active and slot in {1, 2, 3} else 0.0)
+            keyframes.append(
+                {
+                    "t_ms": max(0, min(t_ms, safe_duration)),
+                    "x_norm": max(0.05, min(move_x, 0.95)),
+                    "y_norm": max(0.1, min(move_y, 0.92)),
+                    "scale": base_scale * (1.05 if is_active and slot in {1, 2, 3} else 1.0),
+                    "rotation": (0.6 if slot % 2 else -0.6) if is_active else (0.2 if slot % 2 else -0.2),
+                    "pose": active_pose_cycle[slot] if is_active else "idle",
+                    "emotion": mood if is_active else "neutral",
+                    "opacity": 1.0,
+                    "z_index": z_index,
+                    "ease": "ease_in_out" if slot > 0 else "linear",
+                }
+            )
         output.append(
             {
                 "character_id": char_id,
-                "keyframes": [
-                    {
-                        "t_ms": 0,
-                        "x_norm": x_norm,
-                        "y_norm": 0.72,
-                        "scale": _float_safe(character.get("default_scale"), default=1.0),
-                        "rotation": 0.0,
-                        "pose": "idle",
-                        "emotion": "neutral",
-                        "opacity": 1.0,
-                        "z_index": _int_safe(character.get("z_layer"), default=index),
-                        "ease": "linear",
-                    },
-                    {
-                        "t_ms": safe_duration,
-                        "x_norm": x_norm,
-                        "y_norm": 0.72,
-                        "scale": _float_safe(character.get("default_scale"), default=1.0),
-                        "rotation": 0.0,
-                        "pose": "idle",
-                        "emotion": "neutral",
-                        "opacity": 1.0,
-                        "z_index": _int_safe(character.get("z_layer"), default=index),
-                        "ease": "ease_in_out",
-                    },
-                ],
+                "keyframes": keyframes,
             }
         )
     return output

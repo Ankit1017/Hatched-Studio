@@ -24,8 +24,11 @@ For cartoon jobs, start with `job_id` from background job panel.
 - `cartoon.export.error`
 - `cartoon.pack.validate.start`
 - `cartoon.pack.validate.end`
+- `cartoon.pack.audit.summary`
 - `cartoon.timeline.v2.scene`
 - `cartoon.render.quality_tier`
+- `cartoon.showcase.preset.applied`
+- `cartoon.qa.bundle.generated`
 
 ## Common Failures
 
@@ -93,3 +96,21 @@ Checks:
 4. Confirm character cache variants contain multiple frames; single-frame variants will look static.
 5. If sprite pack is placeholder-quality, set `showcase_avatar_mode=procedural_presenter` (or keep `auto` and ensure motion warnings are detected).
 6. If presenter arms look static, verify scene `character_tracks` are present and v2 planner is active (talk-pose choreography depends on active speaker timing).
+
+## 8) Production pack validation fails in v2
+
+Checks:
+
+1. `lottie_source` file exists for every character and path is readable.
+2. Manifest `cache_resolution` matches actual PNG frame size.
+3. Required directories exist for all `idle/blink/talk` variants.
+4. If `cache_resolution` is unknown, set it in `manifest.json` as `WIDTHxHEIGHT`.
+
+## 9) QA bundle missing or incomplete
+
+Checks:
+
+1. Set `qa_bundle_mode=auto`.
+2. Confirm export completed at least one target output.
+3. Verify payload metadata contains `qa_bundle` and output artifacts include `key=qa_bundle`.
+4. Inspect `qa_bundle.pack_motion_warning_count` and `qa_bundle.cache_miss_count` for motion quality diagnostics.

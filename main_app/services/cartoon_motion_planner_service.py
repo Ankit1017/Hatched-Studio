@@ -65,6 +65,7 @@ class CartoonMotionPlannerService:
             roster = [{"id": "speaker_a", "name": "Speaker A"}, {"id": "speaker_b", "name": "Speaker B"}]
         for index, character in enumerate(roster):
             char_id = _clean(character.get("id")).lower() or f"speaker_{index + 1}"
+            char_seed = (sum(ord(ch) for ch in char_id) % 97) + 1
             track = track_by_id.get(char_id, {})
             keyframes = track.get("keyframes", []) if isinstance(track, dict) else []
             if isinstance(keyframes, list) and keyframes:
@@ -116,6 +117,14 @@ class CartoonMotionPlannerService:
                 emotion=emotion,
                 is_active=is_active,
                 time_ms=time_ms,
+                active_mouth=viseme,
+                char_seed=char_seed,
+            )
+            secondary_motion = _secondary_motion_profile(
+                time_ms=time_ms,
+                char_seed=char_seed,
+                is_active=is_active,
+                state=state,
             )
 
             planned.append(
@@ -133,6 +142,7 @@ class CartoonMotionPlannerService:
                     "state": state,
                     "viseme": viseme,
                     "is_active": is_active,
+                    "secondary_motion": secondary_motion,
                     "duration_ms": duration_ms,
                     "t_ms": time_ms,
                 }
@@ -221,6 +231,8 @@ def _resolved_pose(
     emotion: str,
     is_active: bool,
     time_ms: int,
+    active_mouth: str,
+    char_seed: int,
 ) -> str:
     pose = _clean(raw_pose).lower()
     if pose and pose != "idle":
@@ -228,10 +240,14 @@ def _resolved_pose(
     state_key = _clean(state).lower()
     if state_key != "talk" or not is_active:
         return "idle"
-    return _auto_talk_pose(time_ms=time_ms, emotion=emotion)
+    mouth = _clean(active_mouth).upper() or "X"
+    if mouth == "X":
+        slot = max(0, int(time_ms + (char_seed * 17))) // 420
+        return "open" if slot % 3 == 0 else "idle"
+    return _auto_talk_pose(time_ms=time_ms, emotion=emotion, char_seed=char_seed)
 
 
-def _auto_talk_pose(*, time_ms: int, emotion: str) -> str:
+def _auto_talk_pose(*, time_ms: int, emotion: str, char_seed: int) -> str:
     mood = _clean(emotion).lower() or "neutral"
     cycle = {
         "neutral": ("open", "idle", "point_right", "idle"),
@@ -240,8 +256,30 @@ def _auto_talk_pose(*, time_ms: int, emotion: str) -> str:
         "warm": ("open", "hand_over_heart", "open", "idle"),
         "inspiring": ("open", "raise_both", "open", "hand_over_heart"),
     }.get(mood, ("open", "idle", "point_right", "idle"))
-    slot = max(0, int(time_ms)) // 700
+    slot = max(0, int(time_ms + (char_seed * 41))) // 620
     return cycle[slot % len(cycle)]
+
+
+def _secondary_motion_profile(
+    *,
+    time_ms: int,
+    char_seed: int,
+    is_active: bool,
+    state: str,
+) -> dict[str, float]:
+    safe_time = max(0, int(time_ms))
+    phase = (safe_time + (char_seed * 53)) / 1000.0
+    state_key = _clean(state).lower()
+    sway_amp = 4.2 if is_active else 2.4
+    nod_amp = 2.4 if is_active and state_key == "talk" else 1.1
+    gesture_base = 1.0 if is_active and state_key == "talk" else 0.42
+    recover = 0.7 if state_key == "idle" else 0.28
+    return {
+        "torso_sway_px": _sin_like(phase * 0.95) * sway_amp,
+        "head_nod_deg": _sin_like((phase * 1.6) + 0.3) * nod_amp,
+        "gesture_intensity": max(0.0, min(1.5, gesture_base + (_sin_like(phase * 2.3) * 0.16))),
+        "recover_to_idle": max(0.0, min(1.0, recover)),
+    }
 
 
 def _clean(value: object) -> str:
@@ -268,3 +306,9 @@ def _float_safe(value: object, *, default: float) -> float:
         return float(str(value))
     except (TypeError, ValueError):
         return default
+
+
+def _sin_like(value: float) -> float:
+    import math
+
+    return math.sin(float(value) * (2.0 * math.pi))

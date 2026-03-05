@@ -21,6 +21,7 @@ class CartoonCharacterPackService:
             for item in characters_raw:
                 if not isinstance(item, dict):
                     continue
+                state_map = _state_map(item.get("state_map"))
                 character = cast(
                     CartoonCharacterSpec,
                     {
@@ -33,7 +34,7 @@ class CartoonCharacterPackService:
                         "asset_mode": _clean(item.get("asset_mode")) or "procedural",
                         "lottie_source": _clean(item.get("lottie_source")),
                         "cache_root": _clean(item.get("cache_root")) or f"characters/{_clean(item.get('id')) or f'char_{len(roster) + 1}'}/cache",
-                        "state_map": _dict_safe(item.get("state_map")),
+                        "state_map": state_map,
                         "anchor": _anchor_map(item.get("anchor")),
                         "default_scale": _float_safe(item.get("default_scale"), default=1.0),
                         "z_layer": _int_safe(item.get("z_layer"), default=len(roster)),
@@ -92,7 +93,7 @@ class CartoonCharacterPackService:
                     "asset_mode": "procedural",
                     "lottie_source": "",
                     "cache_root": "characters/ava/cache",
-                    "state_map": {},
+                    "state_map": {"idle": "idle", "talk": "talk", "blink": "blink"},
                     "anchor": {"x": 0.5, "y": 1.0},
                     "default_scale": 1.0,
                     "z_layer": 0,
@@ -110,7 +111,7 @@ class CartoonCharacterPackService:
                     "asset_mode": "procedural",
                     "lottie_source": "",
                     "cache_root": "characters/noah/cache",
-                    "state_map": {},
+                    "state_map": {"idle": "idle", "talk": "talk", "blink": "blink"},
                     "anchor": {"x": 0.5, "y": 1.0},
                     "default_scale": 1.0,
                     "z_layer": 1,
@@ -128,7 +129,7 @@ class CartoonCharacterPackService:
                     "asset_mode": "procedural",
                     "lottie_source": "",
                     "cache_root": "characters/mia/cache",
-                    "state_map": {},
+                    "state_map": {"idle": "idle", "talk": "talk", "blink": "blink"},
                     "anchor": {"x": 0.5, "y": 1.0},
                     "default_scale": 1.0,
                     "z_layer": 2,
@@ -146,7 +147,7 @@ class CartoonCharacterPackService:
                     "asset_mode": "procedural",
                     "lottie_source": "",
                     "cache_root": "characters/liam/cache",
-                    "state_map": {},
+                    "state_map": {"idle": "idle", "talk": "talk", "blink": "blink"},
                     "anchor": {"x": 0.5, "y": 1.0},
                     "default_scale": 1.0,
                     "z_layer": 3,
@@ -163,6 +164,13 @@ def _dict_safe(value: object) -> dict[str, object]:
     if isinstance(value, dict):
         return {str(key): item for key, item in value.items()}
     return {}
+
+
+def _state_map(value: object) -> dict[str, object]:
+    state_map = _dict_safe(value)
+    if state_map:
+        return state_map
+    return {"idle": "idle", "talk": "talk", "blink": "blink"}
 
 
 def _anchor_map(value: object) -> dict[str, float]:

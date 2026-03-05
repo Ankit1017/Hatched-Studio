@@ -8,10 +8,12 @@ from main_app.contracts import (
     CartoonFidelityPreset,
     CartoonOutputMode,
     CartoonPayload,
+    CartoonQABundleMode,
     CartoonQualityTier,
     CartoonRenderStyle,
     CartoonShowcaseAvatarMode,
     CartoonShortType,
+    CartoonStylePreset,
     CartoonTimelineSchemaVersion,
     CartoonTimeline,
 )
@@ -55,6 +57,8 @@ class CartoonShortsAssetService:
         background_style: str = "auto",
         fidelity_preset: str = "auto_profile",
         showcase_avatar_mode: str = "auto",
+        style_preset: str = "default_scene",
+        qa_bundle_mode: str = "auto",
         settings: GroqSettings,
     ) -> CartoonShortsGenerationResult:
         topic_clean = _clean(topic)
@@ -67,9 +71,12 @@ class CartoonShortsAssetService:
         background_style_clean = _normalize_background_style(background_style)
         fidelity_preset_clean = _normalize_fidelity_preset(fidelity_preset)
         showcase_avatar_mode_clean = _normalize_showcase_avatar_mode(showcase_avatar_mode)
+        style_preset_clean = _normalize_style_preset(style_preset)
+        qa_bundle_mode_clean = _normalize_qa_bundle_mode(qa_bundle_mode)
         notes: list[str] = []
 
         character_roster = self._character_pack_service.load_roster(speaker_count=speaker_count)
+        pack_metadata = self._character_pack_service.pack_metadata()
         cache_hits = 0
         total_calls = 0
         debug_raw = None
@@ -114,7 +121,10 @@ class CartoonShortsAssetService:
             parse_error = parse_error or "Cartoon timeline has no scenes."
 
         if timeline_schema_version_clean == "v2":
-            validator = CartoonCharacterAssetValidator(pack_root=self._character_pack_service.pack_root_path())
+            validator = CartoonCharacterAssetValidator(
+                pack_root=self._character_pack_service.pack_root_path(),
+                expected_cache_resolution=_clean(pack_metadata.get("cache_resolution")),
+            )
             asset_errors = validator.validate_roster(
                 roster=character_roster,
                 require_lottie_cache=True,
@@ -127,10 +137,30 @@ class CartoonShortsAssetService:
                 roster=character_roster,
                 timeline_schema_version=timeline_schema_version_clean,
             )
-            notes.extend(motion_warnings[:60])
+            motion_warning_summary = validator.motion_quality_summary(
+                roster=character_roster,
+                timeline_schema_version=timeline_schema_version_clean,
+            )
+            notes.extend(motion_warnings[:20])
+            if len(motion_warnings) > 20:
+                notes.append(f"Motion quality warnings truncated: {len(motion_warnings) - 20} additional warning(s).")
             notes.append("Timeline schema version: v2")
         else:
+            motion_warning_summary = {}
             notes.append("Timeline schema version: v1")
+        notes.append(
+            (
+                "Resolved render config: "
+                f"style_preset={style_preset_clean}, "
+                f"timeline_schema_version={timeline_schema_version_clean}, "
+                f"quality_tier={quality_tier_clean}, "
+                f"render_style={render_style_clean}, "
+                f"background_style={background_style_clean}, "
+                f"fidelity_preset={fidelity_preset_clean}, "
+                f"showcase_avatar_mode={showcase_avatar_mode_clean}, "
+                f"qa_bundle_mode={qa_bundle_mode_clean}"
+            )
+        )
 
         script_markdown = self._script_markdown(
             topic=topic_clean,
@@ -157,18 +187,23 @@ class CartoonShortsAssetService:
                 "background_style": background_style_clean,
                 "fidelity_preset": fidelity_preset_clean,
                 "showcase_avatar_mode": showcase_avatar_mode_clean,
+                "style_preset": style_preset_clean,
+                "qa_bundle_mode": qa_bundle_mode_clean,
                 "metadata": {
                     "idea": idea_clean,
                     "scene_count_requested": max(2, min(int(scene_count), 10)),
                     "speaker_count_requested": max(2, min(int(speaker_count), 4)),
-                    "pack": self._character_pack_service.pack_metadata(),
+                    "pack": pack_metadata,
                     "timeline_schema_version": timeline_schema_version_clean,
                     "quality_tier": quality_tier_clean,
                     "render_style": render_style_clean,
                     "background_style": background_style_clean,
                     "fidelity_preset": fidelity_preset_clean,
                     "showcase_avatar_mode": showcase_avatar_mode_clean,
+                    "style_preset": style_preset_clean,
+                    "qa_bundle_mode": qa_bundle_mode_clean,
                     "pack_motion_warning_count": len(motion_warnings),
+                    "pack_motion_warning_summary": motion_warning_summary,
                 },
             },
         )
@@ -196,6 +231,8 @@ class CartoonShortsAssetService:
             background_style=background_style_clean,
             fidelity_preset=fidelity_preset_clean,
             showcase_avatar_mode=showcase_avatar_mode_clean,
+            style_preset=style_preset_clean,
+            qa_bundle_mode=qa_bundle_mode_clean,
             result=result,
             model=settings.normalized_model,
         )
@@ -218,6 +255,8 @@ class CartoonShortsAssetService:
         background_style: CartoonBackgroundStyle,
         fidelity_preset: CartoonFidelityPreset,
         showcase_avatar_mode: CartoonShowcaseAvatarMode,
+        style_preset: CartoonStylePreset,
+        qa_bundle_mode: CartoonQABundleMode,
         result: CartoonShortsGenerationResult,
         model: str,
     ) -> None:
@@ -244,6 +283,8 @@ class CartoonShortsAssetService:
                 "background_style": background_style,
                 "fidelity_preset": fidelity_preset,
                 "showcase_avatar_mode": showcase_avatar_mode,
+                "style_preset": style_preset,
+                "qa_bundle_mode": qa_bundle_mode,
             },
             result_payload=payload,
             status="error" if result.parse_error else "success",
@@ -348,6 +389,20 @@ def _normalize_showcase_avatar_mode(value: str) -> CartoonShowcaseAvatarMode:
     if raw in {"auto", "cache_sprite", "procedural_presenter"}:
         return cast(CartoonShowcaseAvatarMode, raw)
     return cast(CartoonShowcaseAvatarMode, "auto")
+
+
+def _normalize_style_preset(value: str) -> CartoonStylePreset:
+    raw = _clean(value).lower()
+    if raw in {"default_scene", "expected_showcase"}:
+        return cast(CartoonStylePreset, raw)
+    return cast(CartoonStylePreset, "default_scene")
+
+
+def _normalize_qa_bundle_mode(value: str) -> CartoonQABundleMode:
+    raw = _clean(value).lower()
+    if raw in {"off", "auto"}:
+        return cast(CartoonQABundleMode, raw)
+    return cast(CartoonQABundleMode, "auto")
 
 
 def _int_safe(value: object, *, default: int) -> int:

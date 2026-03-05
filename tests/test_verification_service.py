@@ -220,6 +220,87 @@ class TestVerificationService(unittest.TestCase):
         assert isinstance(issues, list)
         self.assertTrue(any("camera_track" in str(item.get("path", "")) for item in issues if isinstance(item, dict)))
 
+    def test_cartoon_expected_showcase_requires_showcase_render_style(self) -> None:
+        registry = build_default_agent_tool_registry()
+        tool = registry.get_by_intent("cartoon_shorts")
+        assert tool is not None
+        result = AgentAssetResult(
+            intent="cartoon_shorts",
+            status="success",
+            payload={"topic": "CDC"},
+            title="Cartoon Shorts: CDC",
+            content={
+                "topic": "CDC",
+                "style_preset": "expected_showcase",
+                "render_style": "scene",
+                "background_style": "scene",
+                "character_roster": [{"id": "ava", "name": "Ava"}, {"id": "noah", "name": "Noah"}],
+                "timeline": {
+                    "scenes": [
+                        {
+                            "scene_index": 1,
+                            "title": "Intro",
+                            "turns": [
+                                {
+                                    "speaker": "Ava",
+                                    "text": "Hello",
+                                    "start_ms": 0,
+                                    "end_ms": 1200,
+                                    "visual_ref": {"slide_index": 1},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "metadata": {"timeline_schema_version": "v1"},
+            },
+        )
+        summary = verify_asset_result(result=result, tool=tool)
+        self.assertEqual(summary.get("status"), "failed")
+        issues = summary.get("issues", [])
+        assert isinstance(issues, list)
+        self.assertTrue(any("render_style" in str(item.get("path", "")) for item in issues if isinstance(item, dict)))
+
+    def test_cartoon_qa_bundle_artifact_requires_metadata_payload(self) -> None:
+        registry = build_default_agent_tool_registry()
+        tool = registry.get_by_intent("cartoon_shorts")
+        assert tool is not None
+        result = AgentAssetResult(
+            intent="cartoon_shorts",
+            status="success",
+            payload={"topic": "CDC"},
+            title="Cartoon Shorts: CDC",
+            content={
+                "topic": "CDC",
+                "qa_bundle_mode": "auto",
+                "character_roster": [{"id": "ava", "name": "Ava"}, {"id": "noah", "name": "Noah"}],
+                "timeline": {
+                    "scenes": [
+                        {
+                            "scene_index": 1,
+                            "title": "Intro",
+                            "turns": [
+                                {
+                                    "speaker": "Ava",
+                                    "text": "Hello",
+                                    "start_ms": 0,
+                                    "end_ms": 1200,
+                                    "visual_ref": {"slide_index": 1},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "output_artifacts": [{"key": "qa_bundle", "format": "json", "status": "ok"}],
+                "metadata": {"timeline_schema_version": "v1"},
+            },
+        )
+        summary = verify_asset_result(result=result, tool=tool)
+        self.assertEqual(summary.get("status"), "failed")
+        issues = summary.get("issues", [])
+        assert isinstance(issues, list)
+        self.assertTrue(any("qa_bundle" in str(item.get("path", "")) for item in issues if isinstance(item, dict)))
+
 
 if __name__ == "__main__":
     unittest.main()

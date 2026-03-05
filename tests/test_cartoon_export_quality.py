@@ -7,7 +7,9 @@ from main_app.services.cartoon_export_service import (
     _resolve_fidelity_preset,
     _resolve_quality_tier,
     _resolve_render_style,
+    _resolve_qa_bundle_mode,
     _resolve_showcase_avatar_mode,
+    _resolve_style_preset,
     _target_bitrate_kbps,
     _tier_adjusted_fps,
     CartoonExportService,
@@ -87,6 +89,8 @@ class TestCartoonExportQuality(unittest.TestCase):
             output_mode="dual",
             quality_tier="light",
             fidelity_preset="hd_1080p30",
+            render_style="scene",
+            style_preset="default_scene",
         )
         target_map = {target.key: target for target in targets}
         self.assertEqual(target_map["shorts_9_16"].width, 1080)
@@ -117,6 +121,34 @@ class TestCartoonExportQuality(unittest.TestCase):
             ),
             "procedural_presenter",
         )
+
+    def test_style_preset_and_qa_bundle_resolution(self) -> None:
+        self.assertEqual(_resolve_style_preset(payload={"metadata": {"style_preset": "expected_showcase"}}), "expected_showcase")
+        self.assertEqual(_resolve_style_preset(payload={"metadata": {"style_preset": "bad"}}), "default_scene")
+        self.assertEqual(_resolve_qa_bundle_mode(payload={"metadata": {"qa_bundle_mode": "auto"}}), "auto")
+        self.assertEqual(_resolve_qa_bundle_mode(payload={"metadata": {"qa_bundle_mode": "off"}}), "off")
+        self.assertEqual(_resolve_qa_bundle_mode(payload={"metadata": {"qa_bundle_mode": "bad"}}), "auto")
+
+    def test_expected_showcase_auto_profile_enforces_min_target(self) -> None:
+        service = CartoonExportService()
+        targets = service._build_targets(  # noqa: SLF001
+            profile={
+                "shorts_width": 540,
+                "shorts_height": 960,
+                "widescreen_width": 960,
+                "widescreen_height": 540,
+                "fps": 20,
+            },
+            output_mode="shorts_9_16",
+            quality_tier="light",
+            fidelity_preset="auto_profile",
+            render_style="character_showcase",
+            style_preset="expected_showcase",
+        )
+        self.assertEqual(len(targets), 1)
+        self.assertGreaterEqual(targets[0].width, 1080)
+        self.assertGreaterEqual(targets[0].height, 1920)
+        self.assertGreaterEqual(targets[0].fps, 30)
 
 
 if __name__ == "__main__":

@@ -16,10 +16,12 @@
    - `Output Mode`
    - `Timeline Schema Version` (`v2` recommended, `v1` legacy)
    - `Quality Tier` (`auto | light | balanced | high`)
+   - `Style Preset` (`default_scene | expected_showcase`)
    - `Render Style` (`scene | character_showcase`)
    - `Background Style` (`auto | scene | chroma_green`)
    - `Fidelity Preset` (`auto_profile | hd_1080p30 | uhd_4k30`)
    - `Showcase Avatar Mode` (`auto | cache_sprite | procedural_presenter`)
+   - `QA Bundle` (`auto | off`)
    - `Language`
    - `Cinematic Story Mode` (recommended)
 4. Choose timeline source:
@@ -100,6 +102,12 @@ Required state coverage:
 - Emotions: `neutral`, `energetic`, `tense`, `warm`, `inspiring`
 - Talk visemes: `A,B,C,D,E,F,G,H,X`
 
+Strict production checks:
+
+- `lottie_source` path must exist on disk.
+- Manifest `cache_resolution` must match PNG frame dimensions.
+- Missing required variants fail fast in v2 mode.
+
 Motion quality recommendation:
 
 - Keep at least `8+` frames per variant (idle/blink/talk viseme variants).
@@ -111,6 +119,31 @@ Quick demo cache generation (for testing pipeline motion):
 ```bash
 python scripts/generate_cartoon_motion_cache.py --pack-root main_app/assets/cartoon_packs/default --frames 8 --overwrite
 ```
+
+## Expected Output Recipe
+
+For output closest to single-presenter greenscreen references:
+
+1. `Style Preset = expected_showcase`
+2. Keep `Timeline Schema Version = v2`
+3. Keep `Quality Tier = auto`
+4. Keep `Render Style = character_showcase`
+5. Keep `Background Style = chroma_green`
+6. Keep `Showcase Avatar Mode = auto`
+7. Use `Fidelity Preset = hd_1080p30` (or `uhd_4k30` for heavier renders)
+8. Keep `QA Bundle = auto`
+
+When `expected_showcase + auto_profile` is selected, export enforces a minimum target of `1080x1920 @ 30fps`.
+
+## QA Bundle
+
+When `QA Bundle = auto`, export metadata includes a JSON QA report with:
+
+- selected profile/tier/preset/style values
+- target resolution/fps/bitrate for each output mode
+- scene duration/frame totals
+- sprite cache miss count
+- pack motion warning count and summary
 
 ## Tips
 
@@ -125,4 +158,8 @@ python scripts/generate_cartoon_motion_cache.py --pack-root main_app/assets/cart
   - v2 planner now auto-generates presenter gesture poses during active speech (`open`, `point`, `emphasis`, etc.).
 - For high-quality exports, use:
   - `Fidelity Preset = hd_1080p30` (fast) or `uhd_4k30` (best quality, heavier render)
+- If `Style Preset = expected_showcase` but output still looks static:
+  - verify pack has `8+` frames per variant
+  - verify `lottie_source` exists for each character
+  - inspect QA bundle `pack_motion_warning_count` and `cache_miss_count`
 - If manual JSON is rejected, validate `scenes[]` and `turns[]` first.

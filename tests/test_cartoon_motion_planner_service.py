@@ -85,6 +85,30 @@ class TestCartoonMotionPlannerService(unittest.TestCase):
         self.assertEqual(first.get("state"), "blink")
         self.assertEqual(first.get("viseme"), "X")
 
+    def test_secondary_motion_is_deterministic(self) -> None:
+        args = {
+            "scene": self.scene,
+            "character_roster": [{"id": "ava", "name": "Ava"}],
+            "scene_relative_ms": 640,
+            "scene_duration_ms": 1000,
+            "active_turn": {"speaker_id": "ava"},
+            "active_mouth": "B",
+        }
+        first_plan = self.service.plan_frame(**args)
+        second_plan = self.service.plan_frame(**args)
+        first_chars = first_plan.get("characters", [])
+        second_chars = second_plan.get("characters", [])
+        assert isinstance(first_chars, list) and isinstance(second_chars, list) and first_chars and second_chars
+        first_item = first_chars[0]
+        second_item = second_chars[0]
+        assert isinstance(first_item, dict) and isinstance(second_item, dict)
+        first_motion = first_item.get("secondary_motion", {})
+        second_motion = second_item.get("secondary_motion", {})
+        self.assertEqual(first_motion, second_motion)
+        assert isinstance(first_motion, dict)
+        self.assertIn("torso_sway_px", first_motion)
+        self.assertIn("head_nod_deg", first_motion)
+
 
 if __name__ == "__main__":
     unittest.main()

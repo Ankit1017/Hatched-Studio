@@ -343,6 +343,12 @@ def _verify_media_asset(*, result: AgentAssetResult, tool: AgentToolDefinition) 
                         issues=issues,
                         path_prefix=f"sections.{ARTIFACT_CARTOON_PAYLOAD}.data.character_roster[{index}]",
                     )
+            checks_run.append("cartoon_style_metadata_consistency")
+            _validate_cartoon_style_metadata(
+                payload=payload if isinstance(payload, dict) else {},
+                issues=issues,
+                path_prefix=f"sections.{ARTIFACT_CARTOON_PAYLOAD}.data",
+            )
         checks_run.append("cartoon_outputs_artifact_optional")
         _ = _section_data(result=result, key=ARTIFACT_CARTOON_OUTPUTS)
 
@@ -509,6 +515,65 @@ def _validate_cartoon_v2_character_assets(
     state_map = character.get("state_map", {})
     if not isinstance(state_map, dict) or not state_map:
         issues.append(_issue("cartoon v2 character state_map must be a non-empty object.", f"{path_prefix}.state_map"))
+
+
+def _validate_cartoon_style_metadata(
+    *,
+    payload: dict[str, Any],
+    issues: list[VerificationIssue],
+    path_prefix: str,
+) -> None:
+    metadata = payload.get("metadata", {})
+    metadata_map = metadata if isinstance(metadata, dict) else {}
+    style_preset = _clean_text(payload.get("style_preset") or metadata_map.get("style_preset") or "default_scene").lower()
+    render_style = _clean_text(payload.get("render_style") or metadata_map.get("render_style") or "scene").lower()
+    background_style = _clean_text(payload.get("background_style") or metadata_map.get("background_style") or "auto").lower()
+    qa_bundle_mode = _clean_text(payload.get("qa_bundle_mode") or metadata_map.get("qa_bundle_mode") or "auto").lower()
+
+    if style_preset not in {"default_scene", "expected_showcase"}:
+        issues.append(_issue("cartoon style_preset must be `default_scene` or `expected_showcase`.", f"{path_prefix}.style_preset"))
+    if qa_bundle_mode not in {"off", "auto"}:
+        issues.append(_issue("cartoon qa_bundle_mode must be `off` or `auto`.", f"{path_prefix}.qa_bundle_mode"))
+
+    if style_preset == "expected_showcase":
+        if render_style != "character_showcase":
+            issues.append(
+                _issue(
+                    "cartoon expected_showcase preset requires render_style=character_showcase.",
+                    f"{path_prefix}.render_style",
+                )
+            )
+        if background_style not in {"chroma_green", "auto"}:
+            issues.append(
+                _issue(
+                    "cartoon expected_showcase preset requires background_style=chroma_green or auto.",
+                    f"{path_prefix}.background_style",
+                )
+            )
+        warning_count = _safe_int(metadata_map.get("pack_motion_warning_count"), default=0)
+        if warning_count > 0:
+            issues.append(
+                _warning_issue(
+                    "cartoon expected_showcase preset uses a pack with low-motion warnings; quality may look static.",
+                    f"{path_prefix}.metadata.pack_motion_warning_count",
+                )
+            )
+
+    if qa_bundle_mode == "auto":
+        output_artifacts = payload.get("output_artifacts", [])
+        qa_artifact_present = False
+        if isinstance(output_artifacts, list):
+            for artifact in output_artifacts:
+                if isinstance(artifact, dict) and _clean_text(artifact.get("key")).lower() == "qa_bundle":
+                    qa_artifact_present = True
+                    break
+        if qa_artifact_present and not isinstance(metadata_map.get("qa_bundle"), dict):
+            issues.append(
+                _issue(
+                    "cartoon qa_bundle artifact present but metadata.qa_bundle is missing or invalid.",
+                    f"{path_prefix}.metadata.qa_bundle",
+                )
+            )
 
 
 def _clean_text(value: object) -> str:

@@ -33,6 +33,8 @@ _RENDER_STYLES = ["scene", "character_showcase"]
 _BACKGROUND_STYLES = ["auto", "scene", "chroma_green"]
 _FIDELITY_PRESETS = ["auto_profile", "hd_1080p30", "uhd_4k30"]
 _SHOWCASE_AVATAR_MODES = ["auto", "cache_sprite", "procedural_presenter"]
+_STYLE_PRESETS = ["default_scene", "expected_showcase"]
+_QA_BUNDLE_MODES = ["auto", "off"]
 
 
 def render_cartoon_shorts_tab(
@@ -83,10 +85,12 @@ def render_cartoon_shorts_tab(
         st.selectbox("Output Mode", options=_OUTPUT_MODES, index=0, key="cartoon_output_mode")
         st.selectbox("Timeline Schema Version", options=_TIMELINE_SCHEMA_OPTIONS, index=0, key="cartoon_timeline_schema_version")
         st.selectbox("Quality Tier", options=_QUALITY_TIERS, index=0, key="cartoon_quality_tier")
+        st.selectbox("Style Preset", options=_STYLE_PRESETS, index=0, key="cartoon_style_preset")
         st.selectbox("Render Style", options=_RENDER_STYLES, index=0, key="cartoon_render_style")
         st.selectbox("Background Style", options=_BACKGROUND_STYLES, index=0, key="cartoon_background_style")
         st.selectbox("Fidelity Preset", options=_FIDELITY_PRESETS, index=0, key="cartoon_fidelity_preset")
         st.selectbox("Showcase Avatar Mode", options=_SHOWCASE_AVATAR_MODES, index=0, key="cartoon_showcase_avatar_mode")
+        st.selectbox("QA Bundle", options=_QA_BUNDLE_MODES, index=0, key="cartoon_qa_bundle_mode")
         st.selectbox("Language", options=_LANGUAGES, index=0, key="cartoon_language")
         st.checkbox("Use Hinglish Script", value=False, key="cartoon_hinglish_script")
         st.checkbox("Cinematic Story Mode", value=True, key="cartoon_cinematic_story_mode")
@@ -109,6 +113,15 @@ def render_cartoon_shorts_tab(
         scene_count = int(st.session_state.get("cartoon_scene_count", 4))
         speaker_count = int(st.session_state.get("cartoon_speaker_count", 2))
         output_mode = str(st.session_state.get("cartoon_output_mode", "dual")).strip().lower()
+        style_preset = str(st.session_state.get("cartoon_style_preset", "default_scene")).strip().lower()
+        qa_bundle_mode = str(st.session_state.get("cartoon_qa_bundle_mode", "auto")).strip().lower()
+        if style_preset == "expected_showcase":
+            st.session_state["cartoon_render_style"] = "character_showcase"
+            st.session_state["cartoon_background_style"] = "chroma_green"
+            st.session_state["cartoon_timeline_schema_version"] = "v2"
+            st.session_state["cartoon_quality_tier"] = "auto"
+            st.session_state["cartoon_fidelity_preset"] = "hd_1080p30"
+            st.session_state["cartoon_showcase_avatar_mode"] = "auto"
         timeline_schema_version = str(st.session_state.get("cartoon_timeline_schema_version", "v2")).strip().lower()
         quality_tier = str(st.session_state.get("cartoon_quality_tier", "auto")).strip().lower()
         render_style = str(st.session_state.get("cartoon_render_style", "scene")).strip().lower()
@@ -144,6 +157,8 @@ def render_cartoon_shorts_tab(
                 background_style=background_style,
                 fidelity_preset=fidelity_preset,
                 showcase_avatar_mode=showcase_avatar_mode,
+                style_preset=style_preset,
+                qa_bundle_mode=qa_bundle_mode,
                 settings=settings,
             )
             context.raise_if_cancelled()
@@ -183,6 +198,8 @@ def render_cartoon_shorts_tab(
                 metadata_map["background_style"] = background_style
                 metadata_map["fidelity_preset"] = fidelity_preset
                 metadata_map["showcase_avatar_mode"] = showcase_avatar_mode
+                metadata_map["style_preset"] = style_preset
+                metadata_map["qa_bundle_mode"] = qa_bundle_mode
                 payload["metadata"] = metadata_map
                 context.raise_if_cancelled()
 
@@ -228,6 +245,8 @@ def render_cartoon_shorts_tab(
                 "background_style": background_style,
                 "fidelity_preset": fidelity_preset,
                 "showcase_avatar_mode": showcase_avatar_mode,
+                "style_preset": style_preset,
+                "qa_bundle_mode": qa_bundle_mode,
                 "hinglish_script": hinglish_script,
                 "cinematic_story_mode": cinematic_story_mode,
                 "timeline_mode": timeline_mode,
@@ -247,6 +266,8 @@ def render_cartoon_shorts_tab(
                 "background_style": background_style,
                 "fidelity_preset": fidelity_preset,
                 "showcase_avatar_mode": showcase_avatar_mode,
+                "style_preset": style_preset,
+                "qa_bundle_mode": qa_bundle_mode,
             },
         )
         st.session_state.cartoon_background_job_id = job_id
@@ -356,6 +377,11 @@ def _apply_cartoon_job_result(
     st.success(
         f"Generated cartoon asset via {total_calls} LLM calls ({cache_hits} served from cache)."
     )
+    metadata = cartoon_payload.get("metadata", {})
+    if isinstance(metadata, dict):
+        qa_note = str(metadata.get("qa_bundle_note", "") or "").strip()
+        if qa_note:
+            st.info(qa_note)
     if st.session_state.cartoon_audio_error:
         st.warning(st.session_state.cartoon_audio_error)
     if st.session_state.cartoon_output_error:

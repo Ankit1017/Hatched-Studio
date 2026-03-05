@@ -96,6 +96,16 @@ CartoonShowcaseAvatarMode: TypeAlias = Literal[
     "procedural_presenter",
 ]
 
+CartoonStylePreset: TypeAlias = Literal[
+    "default_scene",
+    "expected_showcase",
+]
+
+CartoonQABundleMode: TypeAlias = Literal[
+    "off",
+    "auto",
+]
+
 CartoonEaseType: TypeAlias = Literal[
     "linear",
     "ease_in",
@@ -339,6 +349,8 @@ class CartoonPayload(TypedDict, total=False):
     background_style: CartoonBackgroundStyle
     fidelity_preset: CartoonFidelityPreset
     showcase_avatar_mode: CartoonShowcaseAvatarMode
+    style_preset: CartoonStylePreset
+    qa_bundle_mode: CartoonQABundleMode
 
 
 class AssetSection(TypedDict, total=False):
@@ -625,6 +637,8 @@ class IntentPayload(TypedDict, total=False):
     background_style: str
     fidelity_preset: str
     showcase_avatar_mode: str
+    style_preset: str
+    qa_bundle_mode: str
     idea: str
     manual_timeline_json: str
 

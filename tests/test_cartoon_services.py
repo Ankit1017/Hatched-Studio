@@ -88,6 +88,19 @@ class TestCartoonServices(unittest.TestCase):
         self.assertEqual(cache_hits, 0)
         self.assertEqual(total_calls, 1)
         self.assertTrue(raw_text in {"", None})
+        scenes = timeline.get("scenes", [])
+        assert isinstance(scenes, list)
+        allowed = {"neutral", "energetic", "tense", "warm", "inspiring"}
+        for scene in scenes:
+            if not isinstance(scene, dict):
+                continue
+            turns = scene.get("turns", [])
+            if not isinstance(turns, list):
+                continue
+            for turn in turns:
+                if not isinstance(turn, dict):
+                    continue
+                self.assertIn(str(turn.get("emotion", "neutral")), allowed)
 
     def test_asset_service_generate_from_storyboard(self) -> None:
         asset_service = CartoonShortsAssetService(
@@ -105,6 +118,8 @@ class TestCartoonServices(unittest.TestCase):
             output_mode="dual",
             language="en",
             use_hinglish_script=False,
+            style_preset="expected_showcase",
+            qa_bundle_mode="auto",
             settings=GroqSettings(api_key="k", model="m", temperature=0.2, max_tokens=128),
         )
         self.assertIsNone(result.parse_error)
@@ -114,8 +129,39 @@ class TestCartoonServices(unittest.TestCase):
         self.assertEqual(payload.get("render_style"), "scene")
         self.assertEqual(payload.get("background_style"), "auto")
         self.assertEqual(payload.get("showcase_avatar_mode"), "auto")
+        self.assertEqual(payload.get("style_preset"), "expected_showcase")
+        self.assertEqual(payload.get("qa_bundle_mode"), "auto")
         self.assertTrue(isinstance(payload.get("timeline", {}), dict))
         self.assertTrue(str(payload.get("script_markdown", "")).strip())
+
+    def test_storyboard_fallback_v2_character_tracks_are_dense(self) -> None:
+        storyboard = CartoonStoryboardService(_FailingLLM())  # type: ignore[arg-type]
+        timeline, err, _, _, _, _ = storyboard.generate_timeline(
+            topic="RAG",
+            idea="fallback v2 keyframe density",
+            short_type="educational_explainer",
+            character_roster=[
+                {"id": "ava", "name": "Ava", "role": "Guide"},
+                {"id": "noah", "name": "Noah", "role": "Engineer"},
+            ],
+            scene_count=2,
+            settings=GroqSettings(api_key="k", model="m", temperature=0.2, max_tokens=128),
+            language="en",
+            use_hinglish_script=False,
+            timeline_schema_version="v2",
+        )
+        self.assertIsNone(err)
+        scenes = timeline.get("scenes", [])
+        assert isinstance(scenes, list) and scenes
+        scene = scenes[0]
+        assert isinstance(scene, dict)
+        tracks = scene.get("character_tracks", [])
+        assert isinstance(tracks, list) and tracks
+        first_track = tracks[0]
+        assert isinstance(first_track, dict)
+        keyframes = first_track.get("keyframes", [])
+        assert isinstance(keyframes, list)
+        self.assertGreaterEqual(len(keyframes), 5)
 
     def test_render_profile_tiers(self) -> None:
         service = CartoonRenderProfileService()

@@ -18,11 +18,12 @@ The `cartoon_shorts` asset is a separate media pipeline integrated with:
 - `cartoon_character_pack_service.py`: loads local character pack metadata.
 - `cartoon_character_asset_validator.py`: validates strict v2 cache layout and required state coverage.
   - Also audits motion quality (low frame-count variants) for operator feedback.
+  - Enforces production pack checks (`lottie_source` file existence and cache resolution consistency).
 - `cartoon_lottie_cache_service.py`: resolves deterministic sprite frame paths from pre-rendered cache.
 - `cartoon_motion_planner_service.py`: frame-by-frame camera/blocking/character state planner with easing.
-  - Includes auto talk-pose choreography for showcase presenter mode when pose is not explicitly keyed.
+  - Includes deterministic secondary motion channels (torso sway/head nod/gesture intensity) and mouth-aware pose choreography.
 - `cartoon_audio_service.py`: builds narration track from timeline turns.
-- `cartoon_export_service.py`: renders MP4 outputs for selected aspect ratio(s).
+- `cartoon_export_service.py`: renders MP4 outputs for selected aspect ratio(s) and emits optional QA bundle metadata.
 - `cartoon_scene_renderer.py`: draws per-scene visual frames.
 - `cartoon_render_profile_service.py`: hardware-adaptive render profile.
 - `cartoon_subtitle_service.py`: speaker-aware subtitle formatting/colors.
@@ -47,6 +48,8 @@ v2 additions:
 - `background_style` (`auto | scene | chroma_green`)
 - `fidelity_preset` (`auto_profile | hd_1080p30 | uhd_4k30`)
 - `showcase_avatar_mode` (`auto | cache_sprite | procedural_presenter`)
+- `style_preset` (`default_scene | expected_showcase`)
+- `qa_bundle_mode` (`off | auto`)
 - `camera_track`, `character_tracks`, `subtitle_track` on scenes
 - extended `CartoonCharacterSpec` fields for cache-based rendering
 
@@ -68,3 +71,4 @@ Verification:
 
 - media verification path validates timeline + roster integrity.
 - v2 verification additionally validates motion tracks and required character asset references.
+- expected-showcase verification checks style consistency (`render_style/background_style`) and QA bundle integrity when present.

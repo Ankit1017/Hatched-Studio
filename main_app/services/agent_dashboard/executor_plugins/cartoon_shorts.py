@@ -48,6 +48,8 @@ def _build_executor(context: AssetExecutorPluginContext) -> AssetExecutor:
             background_style=str(payload.get("background_style", "auto")),
             fidelity_preset=str(payload.get("fidelity_preset", "auto_profile")),
             showcase_avatar_mode=str(payload.get("showcase_avatar_mode", "auto")),
+            style_preset=str(payload.get("style_preset", "default_scene")),
+            qa_bundle_mode=str(payload.get("qa_bundle_mode", "auto")),
             settings=settings,
         )
         if result.parse_error or not isinstance(result.cartoon_payload, dict):

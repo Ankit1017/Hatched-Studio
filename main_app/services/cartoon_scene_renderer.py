@@ -138,7 +138,7 @@ class CartoonSceneRenderer:
                     camera_shift_y=camera_shift_y,
                     camera_zoom=camera_zoom,
                 )
-        if not showcase_mode:
+        if not showcase_mode or _showcase_subtitle_enabled(frame_plan=frame_plan):
             self._draw_subtitle(
                 drawer=drawer,
                 width=width,
@@ -466,6 +466,8 @@ class CartoonSceneRenderer:
             viseme = _clean(planned_character.get("viseme")).upper() or "X"
             is_active = bool(planned_character.get("is_active", False))
             t_ms = _int_safe(planned_character.get("t_ms"), default=0)
+            secondary_motion_raw = planned_character.get("secondary_motion", {})
+            secondary_motion = secondary_motion_raw if isinstance(secondary_motion_raw, dict) else {}
             anchor_map = character.get("anchor", {}) if isinstance(character, dict) and isinstance(character.get("anchor"), dict) else {}
             anchor_x = _float_safe(anchor_map.get("x"), default=0.5)
             anchor_y = _float_safe(anchor_map.get("y"), default=1.0)
@@ -511,6 +513,7 @@ class CartoonSceneRenderer:
                         state=state,
                         is_active=is_active,
                         showcase_mode=showcase_mode,
+                        secondary_motion=secondary_motion,
                     )
                     target_w = max(24, int(round(target_w * motion["scale_x"])))
                     target_h = max(24, int(round(target_h * motion["scale_y"])))
@@ -559,6 +562,7 @@ class CartoonSceneRenderer:
                     emotion=emotion,
                     t_ms=t_ms,
                     is_active=is_active,
+                    secondary_motion=secondary_motion,
                 )
                 continue
 
@@ -631,12 +635,14 @@ class CartoonSceneRenderer:
         emotion: str,
         t_ms: int,
         is_active: bool,
+        secondary_motion: dict[str, object] | None = None,
     ) -> None:
         _ = width
         base_rgb = _hex_to_rgb(_clean(character.get("color_hex"))) or (95, 140, 210)
         skin_rgb = _tint_color((236, 205, 172), tint=(10, -6, -4), amount=0.12 if _clean(emotion).lower() == "tense" else 0.0)
         shirt_rgb = _emotion_tinted(base_rgb, emotion=emotion)
         outline = (22, 28, 34)
+        motion_map = secondary_motion if isinstance(secondary_motion, dict) else {}
 
         body_h = max(180, int(height * 0.64 * max(0.7, scale)))
         body_w = int(body_h * 0.42)
@@ -648,7 +654,10 @@ class CartoonSceneRenderer:
 
         phase = (max(0, int(t_ms)) % 1600) / 1600.0
         breath = math.sin(phase * math.pi * 2.0)
-        bob = int(round(3.0 * breath))
+        sway_px = _float_safe(motion_map.get("torso_sway_px"), default=0.0)
+        nod_deg = _float_safe(motion_map.get("head_nod_deg"), default=0.0)
+        gesture_intensity = max(0.6, _float_safe(motion_map.get("gesture_intensity"), default=1.0))
+        bob = int(round((3.0 * breath) + (sway_px * 0.35)))
         talk_state = _clean(state).lower() == "talk"
         pose_key = _clean(pose).lower() or ("open" if talk_state else "idle")
 
@@ -682,7 +691,7 @@ class CartoonSceneRenderer:
 
         # Arms with pose choreography
         shoulder_y = torso_top + int((torso_bottom - torso_top) * 0.2) + bob
-        arm_len = int(body_h * 0.22)
+        arm_len = int(body_h * 0.22 * gesture_intensity)
         left_x, left_y, right_x, right_y = _presenter_arm_targets(
             pose=pose_key,
             arm_len=arm_len,
@@ -703,7 +712,7 @@ class CartoonSceneRenderer:
 
         # Head
         head_r = max(40, int(body_h * 0.16))
-        head_cx = center_x
+        head_cx = center_x + int(round(sway_px * 0.6))
         head_cy = torso_top - head_r + int(bob * 0.8)
         drawer.ellipse(
             (head_cx - head_r, head_cy - head_r, head_cx + head_r, head_cy + head_r),
@@ -752,6 +761,14 @@ class CartoonSceneRenderer:
                 end=168,
                 fill=(25, 28, 35),
                 width=3,
+            )
+        if abs(nod_deg) > 0.1:
+            chin_y = head_cy + int(head_r * 0.54)
+            chin_shift = int(round(nod_deg))
+            drawer.line(
+                (head_cx - int(head_r * 0.2), chin_y, head_cx + int(head_r * 0.2), chin_y + chin_shift),
+                fill=(22, 26, 32),
+                width=2,
             )
 
     def _draw_subtitle(
@@ -928,6 +945,16 @@ def _showcase_subject(planned: list[dict[str, object]]) -> dict[str, object]:
     return planned[0] if planned else {}
 
 
+def _showcase_subtitle_enabled(*, frame_plan: dict[str, object] | None) -> bool:
+    if not isinstance(frame_plan, dict):
+        return False
+    track = frame_plan.get("subtitle_track", {})
+    if not isinstance(track, dict):
+        return False
+    style = _clean(track.get("style")).lower()
+    return style in {"showcase_box", "showcase_subtitle", "forced", "always"}
+
+
 def _sprite_motion_offsets(
     *,
     t_ms: int,
@@ -935,12 +962,17 @@ def _sprite_motion_offsets(
     state: str,
     is_active: bool,
     showcase_mode: bool,
+    secondary_motion: dict[str, object] | None = None,
 ) -> dict[str, float]:
+    motion_map = secondary_motion if isinstance(secondary_motion, dict) else {}
     seed = sum(ord(ch) for ch in _clean(char_id)) % 997
     now = max(0, int(t_ms))
     base = (now + (seed * 17)) / 1000.0
     pulse = math.sin(base * (2.0 * math.pi))
     slow = math.sin(base * (2.0 * math.pi) * 0.45)
+    torso_sway_px = _float_safe(motion_map.get("torso_sway_px"), default=0.0)
+    head_nod_deg = _float_safe(motion_map.get("head_nod_deg"), default=0.0)
+    gesture_intensity = _float_safe(motion_map.get("gesture_intensity"), default=1.0)
     scale_x = 1.0
     scale_y = 1.0
     x_px = 0.0
@@ -961,6 +993,11 @@ def _sprite_motion_offsets(
         # Idle "breathing" to avoid frozen look when cache variants have low frame count.
         scale_x *= 1.0 - (0.012 * slow)
         scale_y *= 1.0 + (0.02 * slow)
+
+    x_px += torso_sway_px * 0.32
+    rotation_deg += head_nod_deg * 0.45
+    scale_x *= 1.0 + ((gesture_intensity - 1.0) * 0.04)
+    scale_y *= 1.0 - ((gesture_intensity - 1.0) * 0.035)
 
     if is_active:
         rotation_deg += 0.7 * slow
