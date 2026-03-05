@@ -21,6 +21,7 @@ class CartoonSceneRenderer:
         topic: str,
         scene: CartoonScene,
         active_turn: CartoonDialogueTurn | None,
+        active_mouth: str = "",
         character_roster: list[CartoonCharacterSpec],
         frame_index: int = 0,
         frame_count: int = 1,
@@ -66,6 +67,7 @@ class CartoonSceneRenderer:
             font_module=font_module,
             character_roster=character_roster,
             active_speaker_id=_clean((active_turn or {}).get("speaker_id")),
+            active_mouth=active_mouth,
             shot_type=_clean(scene.get("shot_type")) or "medium_two_shot",
             focus_character_id=_clean(scene.get("focus_character_id")),
             frame_index=safe_frame_index,
@@ -192,6 +194,7 @@ class CartoonSceneRenderer:
         font_module: Any,
         character_roster: list[CartoonCharacterSpec],
         active_speaker_id: str,
+        active_mouth: str,
         shot_type: str,
         focus_character_id: str,
         frame_index: int,
@@ -290,17 +293,38 @@ class CartoonSceneRenderer:
             mouth_center_y = center_y + int(rr * 0.18) - lift
             mouth_w = int(rr * (0.55 if is_active else 0.34))
             if is_active:
-                mouth_phase = (frame_index // 2) % 4
-                mouth_h = max(2, int(rr * (0.05 + (mouth_phase * 0.03))))
-                drawer.ellipse(
-                    (
-                        center_x - mouth_w // 2,
-                        mouth_center_y - mouth_h // 2,
-                        center_x + mouth_w // 2,
-                        mouth_center_y + mouth_h // 2,
-                    ),
-                    fill=(15, 18, 28),
-                )
+                viseme = _clean(active_mouth).upper()
+                if viseme:
+                    viseme_open = _viseme_open_ratio(viseme)
+                    mouth_h = max(2, int(rr * viseme_open))
+                    if viseme == "X":
+                        drawer.line(
+                            (center_x - mouth_w // 2, mouth_center_y, center_x + mouth_w // 2, mouth_center_y),
+                            fill=(18, 22, 32),
+                            width=3,
+                        )
+                    else:
+                        drawer.ellipse(
+                            (
+                                center_x - mouth_w // 2,
+                                mouth_center_y - mouth_h // 2,
+                                center_x + mouth_w // 2,
+                                mouth_center_y + mouth_h // 2,
+                            ),
+                            fill=(15, 18, 28),
+                        )
+                else:
+                    mouth_phase = (frame_index // 2) % 4
+                    mouth_h = max(2, int(rr * (0.05 + (mouth_phase * 0.03))))
+                    drawer.ellipse(
+                        (
+                            center_x - mouth_w // 2,
+                            mouth_center_y - mouth_h // 2,
+                            center_x + mouth_w // 2,
+                            mouth_center_y + mouth_h // 2,
+                        ),
+                        fill=(15, 18, 28),
+                    )
             else:
                 drawer.line(
                     (center_x - mouth_w // 2, mouth_center_y, center_x + mouth_w // 2, mouth_center_y),
@@ -465,3 +489,18 @@ def _sin_like(progress: float, *, period: float) -> float:
     if normalized <= 0.5:
         return (normalized * 2.0) - 0.5
     return 0.5 - ((normalized - 0.5) * 2.0)
+
+
+def _viseme_open_ratio(viseme: str) -> float:
+    mapping = {
+        "A": 0.18,
+        "B": 0.12,
+        "C": 0.14,
+        "D": 0.1,
+        "E": 0.16,
+        "F": 0.08,
+        "G": 0.15,
+        "H": 0.11,
+        "X": 0.04,
+    }
+    return mapping.get(_clean(viseme).upper(), 0.1)

@@ -13,6 +13,7 @@ from main_app.services.cached_llm_service import CachedLLMService
 from main_app.services.cartoon_audio_service import CartoonAudioService
 from main_app.services.cartoon_exporter import CartoonExporter
 from main_app.services.cartoon_shorts_asset_service import CartoonShortsAssetService
+from main_app.services.video_avatar_lipsync_service import VideoAvatarLipsyncService
 from main_app.ui.components import CartoonRenderConfig, render_background_job_panel, render_cartoon_view
 
 
@@ -139,6 +140,7 @@ def render_cartoon_shorts_tab(
                     language=language,
                     slow=False,
                 )
+                lipsync_service = VideoAvatarLipsyncService()
                 metadata = payload.get("metadata", {})
                 metadata_map: dict[str, JSONValue] = {}
                 if isinstance(metadata, dict):
@@ -150,7 +152,9 @@ def render_cartoon_shorts_tab(
                 )
                 metadata_map["cinematic_story_mode"] = cinematic_story_mode
                 metadata_map["audio_error"] = audio_error or ""
-                metadata_map["audio_segments"] = _segments_json(segments)
+                metadata_map["audio_segments"] = _segments_json(segments, lipsync_service=lipsync_service)
+                metadata_map["audio_timing_source"] = "timeline_audio_segments"
+                metadata_map["mouth_cue_source"] = "heuristic_or_rhubarb"
                 payload["metadata"] = metadata_map
                 context.raise_if_cancelled()
 
@@ -327,11 +331,31 @@ def _parse_manual_timeline(raw_json: str) -> CartoonTimeline | None:
     return cast(CartoonTimeline, parsed)
 
 
-def _segments_json(segments: list[DialogueAudioSegment]) -> list[JSONValue]:
+def _segments_json(
+    segments: list[DialogueAudioSegment],
+    *,
+    lipsync_service: VideoAvatarLipsyncService | None = None,
+) -> list[JSONValue]:
     output: list[JSONValue] = []
     for segment in segments:
         if not isinstance(segment, dict):
             continue
+        mouth_cues: list[JSONValue] = []
+        if lipsync_service is not None:
+            cues, _ = lipsync_service.build_mouth_cues(segment=segment)
+            for cue in cues:
+                if not isinstance(cue, dict):
+                    continue
+                mouth_cues.append(
+                    cast(
+                        JSONValue,
+                        {
+                            "start_ms": int(cue.get("start_ms", 0) or 0),
+                            "end_ms": int(cue.get("end_ms", 0) or 0),
+                            "mouth": str(cue.get("mouth", "X") or "X"),
+                        },
+                    )
+                )
         output.append(
             cast(
                 JSONValue,
@@ -343,6 +367,7 @@ def _segments_json(segments: list[DialogueAudioSegment]) -> list[JSONValue]:
                     "duration_ms": int(segment.get("duration_ms", 0) or 0),
                     "text": str(segment.get("text", "")),
                     "cache_hit": bool(segment.get("cache_hit", False)),
+                    "mouth_cues": mouth_cues,
                 },
             )
         )

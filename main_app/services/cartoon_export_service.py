@@ -34,6 +34,14 @@ class _RenderTarget:
     fps: int
 
 
+@dataclass(frozen=True)
+class _TimedSceneTurn:
+    turn: CartoonDialogueTurn
+    start_ms: int
+    end_ms: int
+    segment: dict[str, object] | None
+
+
 class CartoonExportService:
     def __init__(self, *, telemetry_service: TelemetryService | None = None) -> None:
         self._telemetry_service = telemetry_service
@@ -93,6 +101,7 @@ class CartoonExportService:
             audio_path = render_root / "cartoon_audio.mp3"
             metadata = cartoon_payload.get("metadata", {})
             metadata_map = metadata if isinstance(metadata, dict) else {}
+            timed_segments = _metadata_audio_segments(metadata_map.get("audio_segments"))
             audio_b64 = metadata_map.get("audio_b64")
             if isinstance(audio_b64, str):
                 try:
@@ -116,15 +125,39 @@ class CartoonExportService:
                 audio_clip = None
                 try:
                     scenes = _timeline_scenes(cartoon_payload)
+                    scene_cursor_ms = 0
                     for scene in scenes:
                         scene_idx = _int_safe(scene.get("scene_index"), default=0)
-                        duration_sec = max(1.2, _int_safe(scene.get("duration_ms"), default=4000) / 1000.0)
+                        scene_duration_ms = max(1200, _int_safe(scene.get("duration_ms"), default=4000))
+                        duration_sec = max(1.2, scene_duration_ms / 1000.0)
                         frame_total = max(2, int(round(duration_sec * float(target.fps)))) if cinematic_mode else 1
                         frame_paths: list[str] = []
                         scene_turns = _scene_turns(scene)
+                        timed_turns, scene_start_ms = _build_scene_timed_turns(
+                            scene_turns=scene_turns,
+                            scene_index=scene_idx,
+                            scene_duration_ms=scene_duration_ms,
+                            audio_segments=timed_segments,
+                            fallback_scene_start_ms=scene_cursor_ms,
+                        )
+                        scene_cursor_ms = max(
+                            scene_cursor_ms + scene_duration_ms,
+                            scene_start_ms + scene_duration_ms,
+                            timed_turns[-1].end_ms if timed_turns else scene_start_ms + scene_duration_ms,
+                        )
                         for frame_idx in range(frame_total):
                             frame_path = render_root / f"{target.key}_scene_{scene_idx:03d}_f{frame_idx:04d}.png"
-                            active_turn = _turn_for_progress(scene_turns=scene_turns, progress=frame_idx / max(frame_total - 1, 1))
+                            if frame_total <= 1:
+                                frame_time_ms = scene_start_ms
+                            else:
+                                frame_progress = frame_idx / max(frame_total - 1, 1)
+                                frame_time_ms = scene_start_ms + int(round(float(scene_duration_ms - 1) * frame_progress))
+                            active_timed_turn = _timed_turn_for_time(timed_turns=timed_turns, time_ms=frame_time_ms)
+                            active_turn = active_timed_turn.turn if active_timed_turn is not None else _first_turn(scene)
+                            active_mouth = _mouth_for_time(
+                                segment=(active_timed_turn.segment if active_timed_turn is not None else None),
+                                time_ms=frame_time_ms,
+                            )
                             frame = self._scene_renderer.render_frame(
                                 image_module=Image,
                                 draw_module=ImageDraw,
@@ -134,6 +167,7 @@ class CartoonExportService:
                                 topic=topic,
                                 scene=scene,
                                 active_turn=active_turn,
+                                active_mouth=active_mouth,
                                 character_roster=cast(list[CartoonCharacterSpec], cartoon_payload.get("character_roster", [])),
                                 frame_index=frame_idx,
                                 frame_count=frame_total,
@@ -363,6 +397,153 @@ def _scene_turns(scene: CartoonScene) -> list[CartoonDialogueTurn]:
     if not isinstance(turns, list):
         return []
     return [cast(CartoonDialogueTurn, turn) for turn in turns if isinstance(turn, dict)]
+
+
+def _build_scene_timed_turns(
+    *,
+    scene_turns: list[CartoonDialogueTurn],
+    scene_index: int,
+    scene_duration_ms: int,
+    audio_segments: list[dict[str, object]],
+    fallback_scene_start_ms: int,
+) -> tuple[list[_TimedSceneTurn], int]:
+    if not scene_turns:
+        return [], max(0, int(fallback_scene_start_ms))
+
+    scene_prefix = f"scene_{max(0, int(scene_index)):02d}_"
+    scene_segments = [segment for segment in audio_segments if _clean(segment.get("segment_ref")).startswith(scene_prefix)]
+    segment_by_ref = {_clean(segment.get("segment_ref")): segment for segment in scene_segments}
+
+    turn_starts = [
+        _int_safe(turn.get("start_ms"), default=-1)
+        for turn in scene_turns
+        if _int_safe(turn.get("start_ms"), default=-1) >= 0
+    ]
+    segment_starts = [_int_safe(segment.get("start_ms"), default=-1) for segment in scene_segments if _int_safe(segment.get("start_ms"), default=-1) >= 0]
+    if segment_starts:
+        scene_start_ms = min(segment_starts)
+    elif turn_starts:
+        scene_start_ms = min(turn_starts)
+    else:
+        scene_start_ms = max(0, int(fallback_scene_start_ms))
+
+    cursor = scene_start_ms
+    timed_turns: list[_TimedSceneTurn] = []
+    for position, turn in enumerate(scene_turns):
+        segment_ref = _turn_segment_ref(scene_index=scene_index, turn=turn, fallback_turn_index=position)
+        segment = segment_by_ref.get(segment_ref)
+
+        if segment is not None:
+            start_ms = _int_safe(segment.get("start_ms"), default=cursor)
+            end_ms = _int_safe(segment.get("end_ms"), default=start_ms + max(120, _int_safe(segment.get("duration_ms"), default=1200)))
+        else:
+            start_ms = _int_safe(turn.get("start_ms"), default=cursor)
+            end_ms = _int_safe(
+                turn.get("end_ms"),
+                default=start_ms + max(1200, _int_safe(turn.get("estimated_duration_ms"), default=1800)),
+            )
+
+        if start_ms < cursor:
+            start_ms = cursor
+        if end_ms <= start_ms:
+            end_ms = start_ms + max(120, _int_safe(turn.get("estimated_duration_ms"), default=1200))
+        cursor = end_ms
+        timed_turns.append(
+            _TimedSceneTurn(
+                turn=turn,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                segment=segment,
+            )
+        )
+
+    scene_floor_end = scene_start_ms + max(1200, int(scene_duration_ms))
+    if timed_turns and timed_turns[-1].end_ms < scene_floor_end:
+        last = timed_turns[-1]
+        timed_turns[-1] = _TimedSceneTurn(
+            turn=last.turn,
+            start_ms=last.start_ms,
+            end_ms=scene_floor_end,
+            segment=last.segment,
+        )
+    return timed_turns, scene_start_ms
+
+
+def _timed_turn_for_time(*, timed_turns: list[_TimedSceneTurn], time_ms: int) -> _TimedSceneTurn | None:
+    if not timed_turns:
+        return None
+    for timed in timed_turns:
+        if timed.start_ms <= time_ms < timed.end_ms:
+            return timed
+    if time_ms < timed_turns[0].start_ms:
+        return timed_turns[0]
+    return timed_turns[-1]
+
+
+def _turn_segment_ref(*, scene_index: int, turn: CartoonDialogueTurn, fallback_turn_index: int) -> str:
+    safe_scene = max(0, int(scene_index))
+    safe_turn = max(0, _int_safe(turn.get("turn_index"), default=fallback_turn_index))
+    return f"scene_{safe_scene:02d}_turn_{safe_turn:02d}"
+
+
+def _metadata_audio_segments(raw_segments: object) -> list[dict[str, object]]:
+    if not isinstance(raw_segments, list):
+        return []
+    normalized: list[dict[str, object]] = []
+    for raw in raw_segments:
+        if not isinstance(raw, dict):
+            continue
+        start_ms = max(0, _int_safe(raw.get("start_ms"), default=0))
+        end_ms = max(start_ms + 1, _int_safe(raw.get("end_ms"), default=start_ms + max(1, _int_safe(raw.get("duration_ms"), default=1))))
+        normalized.append(
+            {
+                "segment_ref": _clean(raw.get("segment_ref")),
+                "speaker": _clean(raw.get("speaker")),
+                "text": _clean(raw.get("text")),
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "duration_ms": max(1, end_ms - start_ms),
+                "mouth_cues": _normalize_mouth_cues(raw.get("mouth_cues")),
+            }
+        )
+    normalized.sort(key=lambda segment: _int_safe(segment.get("start_ms"), default=0))
+    return normalized
+
+
+def _normalize_mouth_cues(raw_cues: object) -> list[dict[str, object]]:
+    if not isinstance(raw_cues, list):
+        return []
+    cues: list[dict[str, object]] = []
+    for raw in raw_cues:
+        if not isinstance(raw, dict):
+            continue
+        start_ms = max(0, _int_safe(raw.get("start_ms"), default=0))
+        end_ms = max(start_ms + 1, _int_safe(raw.get("end_ms"), default=start_ms + 1))
+        mouth = _clean(raw.get("mouth")).upper() or "X"
+        cues.append({"start_ms": start_ms, "end_ms": end_ms, "mouth": mouth})
+    cues.sort(key=lambda cue: _int_safe(cue.get("start_ms"), default=0))
+    return cues
+
+
+def _mouth_for_time(*, segment: dict[str, object] | None, time_ms: int) -> str:
+    if not isinstance(segment, dict):
+        return ""
+    cues = segment.get("mouth_cues")
+    if not isinstance(cues, list) or not cues:
+        return ""
+    segment_start_ms = _int_safe(segment.get("start_ms"), default=0)
+    rel_time_ms = max(0, int(time_ms) - segment_start_ms)
+    for cue in cues:
+        if not isinstance(cue, dict):
+            continue
+        cue_start_ms = max(0, _int_safe(cue.get("start_ms"), default=0))
+        cue_end_ms = max(cue_start_ms + 1, _int_safe(cue.get("end_ms"), default=cue_start_ms + 1))
+        if cue_start_ms <= rel_time_ms < cue_end_ms:
+            return _clean(cue.get("mouth")).upper() or "X"
+    last = cues[-1]
+    if isinstance(last, dict):
+        return _clean(last.get("mouth")).upper() or "X"
+    return ""
 
 
 def _turn_for_progress(*, scene_turns: list[CartoonDialogueTurn], progress: float) -> CartoonDialogueTurn | None:
