@@ -13,6 +13,7 @@ Primary schema files:
 - `main_app/schemas/assets/quiz.v1.json`
 - `main_app/schemas/assets/slideshow.v1.json`
 - `main_app/schemas/assets/video.v1.json`
+- `main_app/schemas/assets/cartoon_shorts.v1.json`
 - `main_app/schemas/assets/audio_overview.v1.json`
 - `main_app/schemas/assets/report.v1.json`
 

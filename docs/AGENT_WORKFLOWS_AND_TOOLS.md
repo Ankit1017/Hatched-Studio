@@ -13,6 +13,7 @@ Default tool intents:
 - `quiz`
 - `slideshow`
 - `video`
+- `cartoon_shorts`
 - `audio_overview`
 - `report`
 
@@ -31,7 +32,7 @@ Defined in `build_default_agent_workflow_registry()`:
 - `core_learning_assets`
   - `topic`, `mindmap`, `flashcards`, `quiz`, `slideshow`
 - `media_production_assets`
-  - `slideshow`, `video`, `audio_overview`, `report`
+  - `slideshow`, `video`, `cartoon_shorts`, `audio_overview`, `report`
   - explicit dependency: `video` depends on `slideshow`
 - `full_asset_suite`
   - all tools in catalog order

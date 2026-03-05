@@ -51,6 +51,12 @@ This guide explains how to use the product end to end from the UI.
 - Use for animated multi-character shorts.
 - Choose `Idea to Script` mode for automatic scene creation or `Manual Timeline JSON` for explicit control.
 - Supports `dual` output rendering (`9:16` and `16:9`) and downloadable project/script artifacts.
+- Use `Timeline Schema Version`:
+  - `v2`: strict motion schema (`camera_track`, `character_tracks`) + cache-backed character assets.
+  - `v1`: legacy compatibility path.
+- Use `Quality Tier`:
+  - `auto`: resolves by detected render profile.
+  - `light|balanced|high`: explicit speed vs quality override.
 - Track stage progress in the background job panel (`Script Generation`, `Voice Synthesis`, render stages).
 
 ## Audio Overview

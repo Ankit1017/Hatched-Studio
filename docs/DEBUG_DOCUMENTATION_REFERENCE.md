@@ -48,6 +48,9 @@ This guide explains backend execution flow and how to triage failures quickly.
 - Cartoon shorts internals:
   - storyboard generation: `cartoon_storyboard_service.py`
   - timeline normalization: `cartoon_timeline_service.py`
+  - asset cache validator: `cartoon_character_asset_validator.py`
+  - cache frame resolver: `cartoon_lottie_cache_service.py`
+  - frame motion planner: `cartoon_motion_planner_service.py`
   - scene renderer: `cartoon_scene_renderer.py`
   - dual-format exporter: `cartoon_export_service.py`
 
@@ -88,6 +91,10 @@ This guide explains backend execution flow and how to triage failures quickly.
 2. Validate `timeline.scenes[].turns[]` has speaker/text fields.
 3. Check `cartoon.render.format.end` events for failing format key.
 4. Retry with single output mode (`shorts_9_16` or `widescreen_16_9`) to isolate rendering issues.
+5. If `timeline_schema_version=v2`, validate:
+   - scene-level `camera_track.keyframes` and `character_tracks`
+   - character asset fields (`asset_mode`, `lottie_source`, `cache_root`, `state_map`)
+   - required cache variants/visemes exist on disk.
 
 ## Avatar-mode degradation/fallback
 1. Filter events for `video.avatar_fallback` and `video.avatar_lipsync.segment`.

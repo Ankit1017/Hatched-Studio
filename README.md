@@ -257,6 +257,13 @@ GitHub workflow (`.github/workflows/ci.yml`) runs:
 - [Cartoon Shorts Architecture](docs/CARTOON_SHORTS_ARCHITECTURE.md)
 - [Cartoon Shorts Debug Runbook](docs/CARTOON_SHORTS_DEBUG_RUNBOOK.md)
 
+## Cartoon Shorts v2 Notes
+
+- `Cartoon Shorts Studio` now supports per-request `Timeline Schema Version` selection (`v1` or strict `v2`).
+- `v2` requires motion tracks (`camera_track`, `character_tracks`) and cache-backed character assets (`asset_mode=lottie_cache`).
+- Render controls include `Quality Tier` (`auto`, `light`, `balanced`, `high`) with deterministic hardware-aware mapping.
+- `v2` export fails fast if required cache variants/viseme frames are missing.
+
 ## Notes
 
 - `.cache/` is ignored and used for runtime cache/state snapshots.
