@@ -51,6 +51,7 @@ def render_cartoon_shorts_tab(
     st.caption(
         "Create multi-character cartoon shorts from a simple idea or manual timeline editor, then export dual MP4 outputs."
     )
+    _apply_style_preset_if_needed()
 
     setup_col, control_col = st.columns([0.7, 0.3], gap="large")
     with setup_col:
@@ -85,7 +86,13 @@ def render_cartoon_shorts_tab(
         st.selectbox("Output Mode", options=_OUTPUT_MODES, index=0, key="cartoon_output_mode")
         st.selectbox("Timeline Schema Version", options=_TIMELINE_SCHEMA_OPTIONS, index=0, key="cartoon_timeline_schema_version")
         st.selectbox("Quality Tier", options=_QUALITY_TIERS, index=0, key="cartoon_quality_tier")
-        st.selectbox("Style Preset", options=_STYLE_PRESETS, index=0, key="cartoon_style_preset")
+        st.selectbox(
+            "Style Preset",
+            options=_STYLE_PRESETS,
+            index=0,
+            key="cartoon_style_preset",
+            on_change=_on_style_preset_changed,
+        )
         st.selectbox("Render Style", options=_RENDER_STYLES, index=0, key="cartoon_render_style")
         st.selectbox("Background Style", options=_BACKGROUND_STYLES, index=0, key="cartoon_background_style")
         st.selectbox("Fidelity Preset", options=_FIDELITY_PRESETS, index=0, key="cartoon_fidelity_preset")
@@ -115,13 +122,6 @@ def render_cartoon_shorts_tab(
         output_mode = str(st.session_state.get("cartoon_output_mode", "dual")).strip().lower()
         style_preset = str(st.session_state.get("cartoon_style_preset", "default_scene")).strip().lower()
         qa_bundle_mode = str(st.session_state.get("cartoon_qa_bundle_mode", "auto")).strip().lower()
-        if style_preset == "expected_showcase":
-            st.session_state["cartoon_render_style"] = "character_showcase"
-            st.session_state["cartoon_background_style"] = "chroma_green"
-            st.session_state["cartoon_timeline_schema_version"] = "v2"
-            st.session_state["cartoon_quality_tier"] = "auto"
-            st.session_state["cartoon_fidelity_preset"] = "hd_1080p30"
-            st.session_state["cartoon_showcase_avatar_mode"] = "auto"
         timeline_schema_version = str(st.session_state.get("cartoon_timeline_schema_version", "v2")).strip().lower()
         quality_tier = str(st.session_state.get("cartoon_quality_tier", "auto")).strip().lower()
         render_style = str(st.session_state.get("cartoon_render_style", "scene")).strip().lower()
@@ -443,3 +443,23 @@ def _segments_json(
             )
         )
     return output
+
+
+def _on_style_preset_changed() -> None:
+    _apply_style_preset_if_needed(force=True)
+
+
+def _apply_style_preset_if_needed(*, force: bool = False) -> None:
+    preset = str(st.session_state.get("cartoon_style_preset", "default_scene")).strip().lower()
+    if preset not in {"default_scene", "expected_showcase"}:
+        preset = "default_scene"
+    applied = str(st.session_state.get("cartoon_style_preset_applied", "")).strip().lower()
+    if preset == "expected_showcase" and (force or applied != "expected_showcase"):
+        st.session_state["cartoon_timeline_schema_version"] = "v2"
+        st.session_state["cartoon_quality_tier"] = "auto"
+        st.session_state["cartoon_render_style"] = "character_showcase"
+        st.session_state["cartoon_background_style"] = "chroma_green"
+        st.session_state["cartoon_fidelity_preset"] = "hd_1080p30"
+        st.session_state["cartoon_showcase_avatar_mode"] = "auto"
+        st.session_state["cartoon_qa_bundle_mode"] = "auto"
+    st.session_state["cartoon_style_preset_applied"] = preset

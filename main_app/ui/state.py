@@ -99,6 +99,7 @@ SESSION_DEFAULTS = {
     "cartoon_fidelity_preset": "auto_profile",
     "cartoon_showcase_avatar_mode": "auto",
     "cartoon_style_preset": "default_scene",
+    "cartoon_style_preset_applied": "",
     "cartoon_qa_bundle_mode": "auto",
     "cartoon_language": "en",
     "cartoon_hinglish_script": False,
